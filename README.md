@@ -29,7 +29,7 @@ A cross-platform desktop application for exploring and managing Apache Kafka clu
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/your-username/kafka-explorer/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/NihilBabu/topiq/releases) page.
 
 #### macOS
 - **DMG**: Download `Topiq-x.x.x.dmg` and drag to Applications
@@ -56,7 +56,7 @@ Download the latest release for your platform from the [Releases](https://github
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/kafka-explorer.git
+git clone https://github.com/NihilBabu/topiq.git
 cd kafka-explorer
 
 # Install dependencies
@@ -100,4 +100,4 @@ Build artifacts are output to the `release/` directory.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+- see [LICENSE](LICENSE) for details.

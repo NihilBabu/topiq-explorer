@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels'
 import { Sidebar } from './Sidebar'
 import { TopicList } from '../topics/TopicList'
@@ -10,9 +10,12 @@ import { useConnectionStore } from '@/stores/connection.store'
 import { useTopicStore } from '@/stores/topic.store'
 import { useConsumerStore } from '@/stores/consumer.store'
 import { Database, Users, Zap } from 'lucide-react'
+import { UpdateNotification } from '../updates/UpdateNotification'
+import { UpdateSettings } from '../updates/UpdateSettings'
 
 export function MainLayout() {
   const [activeTab, setActiveTab] = useState('topics')
+  const [appVersion, setAppVersion] = useState<string>('')
   const activeConnectionId = useConnectionStore((state) => state.activeConnectionId)
   const connectionStatus = useConnectionStore((state) => state.connectionStatus)
   const connections = useConnectionStore((state) => state.connections)
@@ -21,6 +24,10 @@ export function MainLayout() {
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
   const isConnected = activeConnectionId && connectionStatus[activeConnectionId] === 'connected'
+
+  useEffect(() => {
+    window.api.updater.getVersion().then(setAppVersion)
+  }, [])
 
   return (
     <div className="flex h-screen flex-col">
@@ -144,8 +151,14 @@ export function MainLayout() {
             </>
           )}
         </div>
-        <span>v1.0.0</span>
+        <div className="flex items-center gap-3">
+          <UpdateSettings compact />
+          <span>v{appVersion || '...'}</span>
+        </div>
       </div>
+
+      {/* Update Notification */}
+      <UpdateNotification />
     </div>
   )
 }
