@@ -67,6 +67,7 @@
   "build": {
     "appId": "com.topiq.app",
     "productName": "Topiq",
+    "publish": null,
     "directories": {
       "output": "release"
     },
