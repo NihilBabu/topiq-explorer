@@ -1,6 +1,6 @@
 {
   "name": "topiq",
-  "version": "0.0.2-alpha",
+  "version": "0.0.3-alpha",
   "description": "A cross-platform desktop application for exploring and managing Apache Kafka clusters",
   "main": "dist-electron/main.js",
   "author": "<babunihil@gmail.com>",
@@ -37,6 +37,7 @@
     "clsx": "^2.1.0",
     "cmdk": "^0.2.1",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.1.7",
     "framer-motion": "^11.0.3",
     "kafkajs": "^2.2.4",
     "lucide-react": "^0.321.0",
@@ -67,7 +68,11 @@
   "build": {
     "appId": "com.topiq.app",
     "productName": "Topiq",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "NihilBabu",
+      "repo": "topiq"
+    },
     "directories": {
       "output": "release"
     },
