@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # No previous tag, get all commits
+            COMMITS=$(git log --oneline --pretty=format:"- %s (%h)" | head -50)
+          else
+            # Get commits since previous tag
+            COMMITS=$(git log --oneline --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..HEAD)
+          fi
+
+          # Create release notes
+          cat << EOF > release_notes.md
+          ## What's Changed
+
+          $COMMITS
+
+          ## Installation
+
+          ### macOS
+          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}.dmg\` and drag to Applications
+          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-mac.zip\` for portable use
+
+          ### Windows
+          - **Installer**: Download \`Topiq-Setup-${{ steps.version.outputs.version }}.exe\`
+          - **Portable**: Download \`Topiq-${{ steps.version.outputs.version }}.exe\`
+          EOF
+
+          cat release_notes.md
+
+      - name: Create draft release (tag-triggered only)
+        id: create_release
+        if: github.event_name == 'push'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Topiq ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+
+  build:
+    needs: prepare-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            build_args: --mac
+          - os: windows-latest
+            platform: win
+            build_args: --win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build application
+        run: yarn build
+        env:
+          # Disable code signing for now (builds will be unsigned)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # macOS code signing (uncomment and set secrets when ready)
+          # CSC_LINK: ${{ secrets.CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # Windows code signing (uncomment and set secrets when ready)
+          # WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: List build artifacts
+        shell: bash
+        run: |
+          echo "Build artifacts:"
+          ls -la release/ || echo "No release directory"
+
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            release/*.exe
+          if-no-files-found: error
+
+  upload-release:
+    needs: [prepare-release, build]
+    runs-on: ubuntu-latest
+    if: always() && needs.build.result == 'success'
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-artifacts
+          path: artifacts/mac
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/win
+
+      - name: List all artifacts
+        run: |
+          echo "All downloaded artifacts:"
+          find artifacts -type f -ls
+
+      - name: Upload to GitHub Release (tag-triggered)
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload all artifacts to the release
+          for file in artifacts/mac/* artifacts/win/*; do
+            if [ -f "$file" ]; then
+              echo "Uploading: $file"
+              gh release upload ${{ github.ref_name }} "$file" --clobber
+            fi
+          done
+        shell: bash
+
+      - name: Upload to GitHub Release (release-triggered)
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload all artifacts to the existing release
+          for file in artifacts/mac/* artifacts/win/*; do
+            if [ -f "$file" ]; then
+              echo "Uploading: $file"
+              gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
+            fi
+          done
+        shell: bash
+
+      - name: Publish release (remove draft status)
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit ${{ github.ref_name }} --draft=false
+
+  cleanup-on-failure:
+    needs: [prepare-release, build]
+    runs-on: ubuntu-latest
+    if: always() && needs.build.result == 'failure' && github.event_name == 'push'
+    steps:
+      - name: Delete draft release on failure
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Build failed, cleaning up draft release..."
+          gh release delete ${{ github.ref_name }} --yes || echo "Release not found or already deleted"
