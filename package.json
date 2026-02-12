@@ -1,6 +1,6 @@
 {
   "name": "topiq",
-  "version": "0.0.4-alpha",
+  "version": "0.0.5-alpha",
   "description": "A cross-platform desktop application for exploring and managing Apache Kafka clusters",
   "main": "dist-electron/main.js",
   "author": "<babunihil@gmail.com>",
