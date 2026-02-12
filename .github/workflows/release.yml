@@ -54,8 +54,13 @@ jobs:
           ## Installation
 
           ### macOS
-          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}.dmg\` and drag to Applications
-          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-mac.zip\` for portable use
+          #### Apple Silicon (M1/M2/M3)
+          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}-arm64.dmg\`
+          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-arm64-mac.zip\`
+
+          #### Intel
+          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}.dmg\`
+          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-mac.zip\`
 
           ### Windows
           - **Installer**: Download \`Topiq-Setup-${{ steps.version.outputs.version }}.exe\`
@@ -85,7 +90,7 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
-            build_args: --mac
+            build_args: --mac --x64 --arm64
           - os: windows-latest
             platform: win
             build_args: --win
@@ -132,6 +137,8 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
           if-no-files-found: error
 
       - name: Upload Windows artifacts
