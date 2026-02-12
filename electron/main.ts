@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import { autoUpdater } from 'electron-updater'
 import Store from 'electron-store'
 import { KafkaService } from './services/kafka.service'
@@ -147,107 +148,209 @@ app.on('before-quit', async () => {
   await kafkaService.disconnectAll()
 })
 
+// Standardized IPC response helper
+function ipcSuccess<T>(data: T) {
+  return { success: true as const, data }
+}
+
+function ipcError(error: unknown) {
+  return { success: false as const, error: error instanceof Error ? error.message : String(error) }
+}
+
 // Connection IPC Handlers
 ipcMain.handle('connections:getAll', () => {
-  return connectionStore.getAll()
+  try {
+    return ipcSuccess(connectionStore.getAll())
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('connections:get', (_, id: string) => {
-  return connectionStore.get(id)
+  try {
+    return ipcSuccess(connectionStore.get(id))
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('connections:save', (_, connection) => {
-  return connectionStore.save(connection)
+  try {
+    return ipcSuccess(connectionStore.save(connection))
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('connections:delete', (_, id: string) => {
-  return connectionStore.delete(id)
+  try {
+    connectionStore.delete(id)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('connections:test', async (_, connection) => {
   return kafkaService.testConnection(connection)
 })
 
+ipcMain.handle('connections:pickCertFile', async () => {
+  try {
+    if (!mainWindow) {
+      return ipcError('No active window')
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Certificate or Key File',
+      filters: [
+        { name: 'PEM Files', extensions: ['pem', 'crt', 'key', 'ca', 'cert'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return ipcSuccess(null)
+    }
+
+    const filePath = result.filePaths[0]
+    const content = fs.readFileSync(filePath, 'utf-8')
+
+    if (!content.includes('-----BEGIN ')) {
+      return { success: false as const, error: 'File does not appear to be a valid PEM file. Expected content starting with "-----BEGIN ".' }
+    }
+
+    const filename = path.basename(filePath)
+    return ipcSuccess({ filename, content })
+  } catch (error) {
+    return ipcError(error)
+  }
+})
+
 // Kafka IPC Handlers
 ipcMain.handle('kafka:connect', async (_, connectionId: string) => {
-  const connection = connectionStore.get(connectionId)
-  if (!connection) {
-    throw new Error('Connection not found')
-  }
-  await kafkaService.connect(connection)
-
-  // Clean up any orphaned consumer groups from previous sessions (crash recovery)
   try {
-    const groups = await kafkaService.getConsumerGroups(connectionId)
-    const orphaned = groups
-      .filter((g) => g.groupId.startsWith('kafka-explorer-consumer-'))
-      .map((g) => g.groupId)
-    if (orphaned.length > 0) {
-      await kafkaService.deleteOrphanedGroups(connectionId, orphaned)
+    const connection = connectionStore.get(connectionId)
+    if (!connection) {
+      return ipcError('Connection not found')
     }
-  } catch {
-    // Ignore cleanup errors - don't fail the connection
+    await kafkaService.connect(connection)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
   }
 })
 
 ipcMain.handle('kafka:disconnect', async (_, connectionId: string) => {
-  return kafkaService.disconnect(connectionId)
+  try {
+    await kafkaService.disconnect(connectionId)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:getTopics', async (_, connectionId: string) => {
-  return kafkaService.getTopics(connectionId)
+  try {
+    return ipcSuccess(await kafkaService.getTopics(connectionId))
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:getTopicMetadata', async (_, connectionId: string, topic: string) => {
-  return kafkaService.getTopicMetadata(connectionId, topic)
+  try {
+    return ipcSuccess(await kafkaService.getTopicMetadata(connectionId, topic))
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:getTopicConfig', async (_, connectionId: string, topic: string) => {
-  return kafkaService.getTopicConfig(connectionId, topic)
+  try {
+    return ipcSuccess(await kafkaService.getTopicConfig(connectionId, topic))
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:createTopic', async (_, connectionId: string, config) => {
-  return kafkaService.createTopic(connectionId, config)
+  try {
+    await kafkaService.createTopic(connectionId, config)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:deleteTopic', async (_, connectionId: string, topic: string) => {
-  return kafkaService.deleteTopic(connectionId, topic)
+  try {
+    await kafkaService.deleteTopic(connectionId, topic)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:getMessages', async (_, connectionId: string, topic: string, options) => {
   try {
-    return { success: true, data: await kafkaService.getMessages(connectionId, topic, options) }
+    return ipcSuccess(await kafkaService.getMessages(connectionId, topic, options))
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to get messages' }
+    return ipcError(error)
   }
 })
 
 ipcMain.handle('kafka:produceMessage', async (_, connectionId: string, topic: string, message) => {
-  return kafkaService.produceMessage(connectionId, topic, message)
+  try {
+    await kafkaService.produceMessage(connectionId, topic, message)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:getConsumerGroups', async (_, connectionId: string) => {
-  return kafkaService.getConsumerGroups(connectionId)
+  try {
+    return ipcSuccess(await kafkaService.getConsumerGroups(connectionId))
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:getConsumerGroupDetails', async (_, connectionId: string, groupId: string) => {
   try {
-    return { success: true, data: await kafkaService.getConsumerGroupDetails(connectionId, groupId) }
+    return ipcSuccess(await kafkaService.getConsumerGroupDetails(connectionId, groupId))
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to get consumer group details' }
+    return ipcError(error)
   }
 })
 
 ipcMain.handle('kafka:deleteConsumerGroup', async (_, connectionId: string, groupId: string) => {
-  return kafkaService.deleteConsumerGroup(connectionId, groupId)
+  try {
+    await kafkaService.deleteConsumerGroup(connectionId, groupId)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:resetOffsets', async (_, connectionId: string, groupId: string, topic: string, options) => {
-  return kafkaService.resetOffsets(connectionId, groupId, topic, options)
+  try {
+    await kafkaService.resetOffsets(connectionId, groupId, topic, options)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 ipcMain.handle('kafka:deleteRecords', async (_, connectionId: string, topic: string, partitionOffsets: { partition: number; offset: string }[]) => {
-  return kafkaService.deleteRecords(connectionId, topic, partitionOffsets)
+  try {
+    await kafkaService.deleteRecords(connectionId, topic, partitionOffsets)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
 })
 
 // Updater IPC Handlers

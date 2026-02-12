@@ -8,6 +8,11 @@ interface MessageToRepublish {
   partition?: number
 }
 
+// Track request IDs to prevent stale data from race conditions
+let messageRequestId = 0
+// Track in-flight requests to prevent duplicates
+const inFlightRequests = new Map<string, Promise<void>>()
+
 interface TopicState {
   topics: string[]
   selectedTopic: string | null
@@ -51,13 +56,37 @@ export const useTopicStore = create<TopicState>((set) => ({
   error: null,
 
   loadTopics: async (connectionId) => {
-    set({ isLoadingTopics: true, isLoading: true, error: null })
-    try {
-      const topics = await window.api.kafka.getTopics(connectionId)
-      set({ topics: topics.sort(), isLoadingTopics: false, isLoading: false })
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'Failed to load topics', isLoadingTopics: false, isLoading: false })
+    // Deduplicate in-flight requests
+    const requestKey = `loadTopics:${connectionId}`
+    const existingRequest = inFlightRequests.get(requestKey)
+    if (existingRequest) return existingRequest
+
+    const doLoad = async () => {
+      set({ isLoadingTopics: true, isLoading: true, error: null })
+      try {
+        const result = await window.api.kafka.getTopics(connectionId) as unknown
+        // Handle standardized IPC response
+        let topics: string[]
+        if (result && typeof result === 'object' && 'success' in result) {
+          const typedResult = result as { success: boolean; data?: string[]; error?: string }
+          if (!typedResult.success) {
+            throw new Error(typedResult.error || 'Failed to load topics')
+          }
+          topics = typedResult.data ?? []
+        } else {
+          topics = result as string[]
+        }
+        set({ topics: topics.sort(), isLoadingTopics: false, isLoading: false })
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : 'Failed to load topics', isLoadingTopics: false, isLoading: false })
+      } finally {
+        inFlightRequests.delete(requestKey)
+      }
     }
+
+    const promise = doLoad()
+    inFlightRequests.set(requestKey, promise)
+    return promise
   },
 
   selectTopic: (topic) => {
@@ -67,7 +96,18 @@ export const useTopicStore = create<TopicState>((set) => ({
   loadTopicMetadata: async (connectionId, topic) => {
     set({ isLoadingMetadata: true, error: null })
     try {
-      const metadata = await window.api.kafka.getTopicMetadata(connectionId, topic)
+      const result = await window.api.kafka.getTopicMetadata(connectionId, topic) as unknown
+      // Handle standardized IPC response
+      let metadata: TopicMetadata
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; data?: TopicMetadata; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to load topic metadata')
+        }
+        metadata = typedResult.data!
+      } else {
+        metadata = result as TopicMetadata
+      }
       set({ topicMetadata: metadata, isLoadingMetadata: false })
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load topic metadata', isLoadingMetadata: false })
@@ -77,7 +117,18 @@ export const useTopicStore = create<TopicState>((set) => ({
   loadTopicConfig: async (connectionId, topic) => {
     set({ isLoadingConfig: true, error: null })
     try {
-      const config = await window.api.kafka.getTopicConfig(connectionId, topic)
+      const result = await window.api.kafka.getTopicConfig(connectionId, topic) as unknown
+      // Handle standardized IPC response
+      let config: ConfigEntry[]
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; data?: ConfigEntry[]; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to load topic config')
+        }
+        config = typedResult.data ?? []
+      } else {
+        config = result as ConfigEntry[]
+      }
       set({ topicConfig: config, isLoadingConfig: false })
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load topic config', isLoadingConfig: false })
@@ -87,8 +138,25 @@ export const useTopicStore = create<TopicState>((set) => ({
   createTopic: async (connectionId, config) => {
     set({ isLoadingTopics: true, isLoading: true, error: null })
     try {
-      await window.api.kafka.createTopic(connectionId, config)
-      const topics = await window.api.kafka.getTopics(connectionId)
+      const createResult = await window.api.kafka.createTopic(connectionId, config) as unknown
+      // Handle standardized IPC response
+      if (createResult && typeof createResult === 'object' && 'success' in createResult) {
+        const typedResult = createResult as { success: boolean; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to create topic')
+        }
+      }
+      const topicsResult = await window.api.kafka.getTopics(connectionId) as unknown
+      let topics: string[]
+      if (topicsResult && typeof topicsResult === 'object' && 'success' in topicsResult) {
+        const typedResult = topicsResult as { success: boolean; data?: string[]; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to load topics')
+        }
+        topics = typedResult.data ?? []
+      } else {
+        topics = topicsResult as string[]
+      }
       set({ topics: topics.sort(), isLoadingTopics: false, isLoading: false })
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to create topic', isLoadingTopics: false, isLoading: false })
@@ -99,7 +167,14 @@ export const useTopicStore = create<TopicState>((set) => ({
   deleteTopic: async (connectionId, topic) => {
     set({ isLoadingTopics: true, isLoading: true, error: null })
     try {
-      await window.api.kafka.deleteTopic(connectionId, topic)
+      const result = await window.api.kafka.deleteTopic(connectionId, topic) as unknown
+      // Handle standardized IPC response
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to delete topic')
+        }
+      }
       set((state) => ({
         topics: state.topics.filter((t) => t !== topic),
         selectedTopic: state.selectedTopic === topic ? null : state.selectedTopic,
@@ -113,9 +188,13 @@ export const useTopicStore = create<TopicState>((set) => ({
   },
 
   loadMessages: async (connectionId, topic, options) => {
+    // Track this request to prevent stale data from race conditions
+    const currentRequestId = ++messageRequestId
     set({ isLoadingMessages: true, error: null })
     try {
       const result = await window.api.kafka.getMessages(connectionId, topic, options) as unknown
+      // Discard stale response if a newer request was made
+      if (currentRequestId !== messageRequestId) return
       // Handle structured response format from IPC handler
       if (result && typeof result === 'object' && 'success' in result) {
         const typedResult = result as { success: boolean; error?: string; data?: { messages: KafkaMessage[] } }
@@ -135,6 +214,8 @@ export const useTopicStore = create<TopicState>((set) => ({
         set({ messages, isLoadingMessages: false })
       }
     } catch (error) {
+      // Discard stale error if a newer request was made
+      if (currentRequestId !== messageRequestId) return
       set({ error: error instanceof Error ? error.message : 'Failed to load messages', isLoadingMessages: false })
     }
   },
@@ -142,7 +223,14 @@ export const useTopicStore = create<TopicState>((set) => ({
   produceMessage: async (connectionId, topic, message) => {
     set({ isLoading: true, error: null })
     try {
-      await window.api.kafka.produceMessage(connectionId, topic, message)
+      const result = await window.api.kafka.produceMessage(connectionId, topic, message) as unknown
+      // Handle standardized IPC response
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to produce message')
+        }
+      }
       set({ isLoading: false })
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to produce message', isLoading: false })

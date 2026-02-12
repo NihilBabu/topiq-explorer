@@ -1,45 +1,14 @@
 import { Kafka, Admin, Producer, Consumer, logLevel, SASLOptions } from 'kafkajs'
 import { randomUUID } from 'crypto'
-
-interface KafkaConnection {
-  id: string
-  name: string
-  brokers: string[]
-  ssl?: boolean
-  sasl?: {
-    mechanism: 'plain' | 'scram-sha-256' | 'scram-sha-512'
-    username: string
-    password: string
-  }
-}
-
-interface TopicConfig {
-  name: string
-  numPartitions: number
-  replicationFactor: number
-  configEntries?: Record<string, string>
-}
-
-interface MessageOptions {
-  partition?: number
-  fromOffset?: string
-  fromTimestamp?: number
-  limit?: number
-}
-
-interface ProduceMessage {
-  key?: string
-  value: string | null
-  headers?: Record<string, string>
-  partition?: number
-}
-
-interface ResetOffsetOptions {
-  type: 'earliest' | 'latest' | 'timestamp' | 'offset'
-  timestamp?: number
-  offset?: string
-  partitions?: number[]
-}
+import * as tls from 'tls'
+import type {
+  KafkaConnection,
+  TLSConfig,
+  TopicConfig,
+  MessageOptions,
+  ProduceMessage,
+  ResetOffsetOptions
+} from '../../shared/types'
 
 interface KafkaInstance {
   kafka: Kafka
@@ -66,6 +35,28 @@ export class KafkaService {
     }
   }
 
+  private buildTlsOptions(tlsConfig: TLSConfig): tls.ConnectionOptions {
+    const options: tls.ConnectionOptions = {}
+
+    if (tlsConfig.ca) {
+      options.ca = [tlsConfig.ca]
+    }
+    if (tlsConfig.cert) {
+      options.cert = tlsConfig.cert
+    }
+    if (tlsConfig.key) {
+      options.key = tlsConfig.key
+    }
+    if (tlsConfig.passphrase) {
+      options.passphrase = tlsConfig.passphrase
+    }
+    if (tlsConfig.rejectUnauthorized !== undefined) {
+      options.rejectUnauthorized = tlsConfig.rejectUnauthorized
+    }
+
+    return options
+  }
+
   private createKafkaClient(connection: KafkaConnection): Kafka {
     const sasl: SASLOptions | undefined = connection.sasl
       ? {
@@ -75,15 +66,45 @@ export class KafkaService {
         }
       : undefined
 
+    let sslOption: boolean | tls.ConnectionOptions | undefined
+    if (typeof connection.ssl === 'object' && connection.ssl !== null) {
+      sslOption = this.buildTlsOptions(connection.ssl)
+    } else {
+      sslOption = connection.ssl
+    }
+
     return new Kafka({
       clientId: `kafka-explorer-${connection.id}`,
       brokers: connection.brokers,
-      ssl: connection.ssl,
+      ssl: sslOption,
       sasl,
       logLevel: logLevel.WARN,
       connectionTimeout: 10000,
       requestTimeout: 30000
     })
+  }
+
+  private mapTlsError(error: Error): string {
+    const message = error.message || ''
+    const tlsErrors: Record<string, string> = {
+      'DEPTH_ZERO_SELF_SIGNED_CERT': 'The server is using a self-signed certificate. Enable "Skip certificate verification" to connect.',
+      'SELF_SIGNED_CERT_IN_CHAIN': 'The certificate chain contains a self-signed certificate. Provide the CA certificate or enable "Skip certificate verification".',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE': 'Unable to verify the server certificate. Provide the correct CA certificate or enable "Skip certificate verification".',
+      'CERT_HAS_EXPIRED': 'The server certificate has expired. Contact the cluster administrator.',
+      'ERR_TLS_CERT_ALTNAME_INVALID': 'The server hostname does not match the certificate. Check the broker address or provide the correct certificate.',
+      'UNABLE_TO_GET_ISSUER_CERT': 'Unable to find the certificate issuer. Provide the CA certificate.',
+      'UNABLE_TO_GET_ISSUER_CERT_LOCALLY': 'Unable to find the certificate issuer locally. Provide the CA certificate.',
+      'ERR_OSSL_EVP_BAD_DECRYPT': 'Could not decrypt the private key. Check the passphrase.',
+      'ERR_OSSL_PEM_BAD_BASE64_DECODE': 'The certificate or key file is malformed. Ensure it is a valid PEM file.',
+    }
+
+    for (const [code, friendlyMessage] of Object.entries(tlsErrors)) {
+      if (message.includes(code)) {
+        return friendlyMessage
+      }
+    }
+
+    return message
   }
 
   async testConnection(connection: Omit<KafkaConnection, 'id'>): Promise<{ success: boolean; error?: string }> {
@@ -97,7 +118,8 @@ export class KafkaService {
       await admin.disconnect()
       return { success: true }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+      const errorMessage = error instanceof Error ? this.mapTlsError(error) : 'Unknown error'
+      return { success: false, error: errorMessage }
     }
   }
 
@@ -125,17 +147,45 @@ export class KafkaService {
     const instance = this.instances.get(connectionId)
     if (!instance) return
 
+    const errors: Error[] = []
+
+    // Disconnect all consumers
     for (const consumer of instance.consumers.values()) {
-      await consumer.disconnect()
+      try {
+        await consumer.disconnect()
+      } catch (error) {
+        errors.push(error instanceof Error ? error : new Error(String(error)))
+      }
     }
+    instance.consumers.clear()
 
     // Clean up any tracked temporary consumer groups before disconnecting admin
-    await this.cleanupTempGroups(connectionId)
+    try {
+      await this.cleanupTempGroups(connectionId)
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error(String(error)))
+    }
 
-    await instance.producer.disconnect()
-    await instance.admin.disconnect()
+    // Disconnect producer
+    try {
+      await instance.producer.disconnect()
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error(String(error)))
+    }
+
+    // Disconnect admin
+    try {
+      await instance.admin.disconnect()
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error(String(error)))
+    }
 
     this.instances.delete(connectionId)
+
+    // If there were errors, log them but don't throw (cleanup completed)
+    if (errors.length > 0) {
+      console.warn(`Disconnect encountered ${errors.length} error(s):`, errors.map((e) => e.message))
+    }
   }
 
   async cleanupTempGroups(connectionId: string): Promise<void> {
@@ -240,13 +290,58 @@ export class KafkaService {
 
     // Hard cap at 500 messages maximum
     const maxLimit = Math.min(limit, 500)
+
+    // 1. Pre-check offsets via admin API — short-circuit if empty
+    const topicOffsets = await admin.fetchTopicOffsets(topic)
+    const targetOffsets = partition !== undefined
+      ? topicOffsets.filter((o) => o.partition === partition)
+      : topicOffsets
+
+    // Build seek map: partition → { seekOffset, high }
+    const seekMap = new Map<number, { seekOffset: string; high: string }>()
+
+    if (fromTimestamp) {
+      const timestampOffsets = await admin.fetchTopicOffsetsByTimestamp(topic, fromTimestamp)
+      for (const tOff of timestampOffsets) {
+        if (partition !== undefined && tOff.partition !== partition) continue
+        const matched = targetOffsets.find((o) => o.partition === tOff.partition)
+        if (matched) {
+          seekMap.set(tOff.partition, { seekOffset: tOff.offset, high: matched.high })
+        }
+      }
+    } else {
+      for (const off of targetOffsets) {
+        const seekOffset = fromOffset ?? off.low
+        seekMap.set(off.partition, { seekOffset, high: off.high })
+      }
+    }
+
+    // Sum expected messages across target partitions
+    let totalExpected = 0
+    for (const [, { seekOffset, high }] of seekMap) {
+      const available = Number(BigInt(high) - BigInt(seekOffset))
+      if (available > 0) totalExpected += available
+    }
+
+    // Short-circuit: no messages available
+    if (totalExpected === 0) {
+      return { messages: [], hasMore: false, nextOffset: null }
+    }
+
+    // Cap expected count at the fetch limit
+    totalExpected = Math.min(totalExpected, maxLimit)
+
+    // 2. Create consumer, subscribe, seek, and collect messages
     const groupId = `kafka-explorer-consumer-${randomUUID()}`
     const consumer = kafka.consumer({ groupId })
 
     // Track this temporary group for cleanup on shutdown
     this.trackTempGroup(connectionId, groupId)
 
+    let cleanedUp = false
     const cleanup = async () => {
+      if (cleanedUp) return
+      cleanedUp = true
       await consumer.disconnect()
       try {
         await admin.deleteGroups([groupId])
@@ -258,18 +353,7 @@ export class KafkaService {
 
     try {
       await consumer.connect()
-
-      const topicOffsets = await admin.fetchTopicOffsets(topic)
-      const _partitions =
-        partition !== undefined
-          ? [{ partition, offset: fromOffset || topicOffsets.find((p) => p.partition === partition)?.low || '0' }]
-          : topicOffsets.map((p) => ({
-              partition: p.partition,
-              offset: fromOffset || p.low || '0'
-            }))
-      void _partitions // Prepared for future use with seek functionality
-
-      await consumer.subscribe({ topic, fromBeginning: !fromOffset && !fromTimestamp })
+      await consumer.subscribe({ topic, fromBeginning: true })
 
       const messages: Array<{
         partition: number
@@ -284,29 +368,44 @@ export class KafkaService {
         let messageCount = 0
         let lastOffset: string | null = null
         let lastPartition: number | null = null
+        let resolved = false
+        let idleTimer: ReturnType<typeof setTimeout> | null = null
 
-        const timeout = setTimeout(() => {
+        const finish = (hasMore: boolean) => {
+          if (resolved) return
+          resolved = true
+          if (idleTimer) clearTimeout(idleTimer)
+          clearTimeout(overallTimeout)
           cleanup().then(() =>
             resolve({
               messages,
-              hasMore: false,
-              nextOffset: null
+              hasMore,
+              nextOffset: hasMore && lastOffset ? String(BigInt(lastOffset) + 1n) : null,
+              nextPartition: hasMore ? lastPartition : undefined
             })
           )
-        }, 5000)
+        }
+
+        const resetIdleTimer = () => {
+          if (idleTimer) clearTimeout(idleTimer)
+          idleTimer = setTimeout(() => finish(false), 2000)
+        }
+
+        // Overall safety-net timeout: 15 seconds
+        const overallTimeout = setTimeout(() => finish(false), 15000)
 
         consumer
           .run({
             eachMessage: async ({ partition: msgPartition, message }) => {
+              if (resolved) return
+
+              // Filter by partition if specified
+              if (partition !== undefined && msgPartition !== partition) {
+                return
+              }
+
               if (messageCount >= maxLimit) {
-                clearTimeout(timeout)
-                await cleanup()
-                resolve({
-                  messages,
-                  hasMore: true,
-                  nextOffset: lastOffset ? String(BigInt(lastOffset) + 1n) : null,
-                  nextPartition: lastPartition
-                })
+                finish(true)
                 return
               }
 
@@ -331,19 +430,28 @@ export class KafkaService {
               lastPartition = msgPartition
 
               if (messageCount >= maxLimit) {
-                clearTimeout(timeout)
-                await cleanup()
-                resolve({
-                  messages,
-                  hasMore: true,
-                  nextOffset: String(BigInt(lastOffset) + 1n),
-                  nextPartition: lastPartition
-                })
+                finish(true)
+              } else if (messageCount >= totalExpected) {
+                // All expected messages received — resolve immediately
+                finish(false)
+              } else {
+                resetIdleTimer()
               }
             }
           })
+          .then(() => {
+            // Seek to exact offsets after run() starts — bypasses group coordination
+            for (const [p, { seekOffset }] of seekMap) {
+              consumer.seek({ topic, partition: p, offset: seekOffset })
+            }
+            // Start idle timer after seeks are issued
+            resetIdleTimer()
+          })
           .catch((error) => {
-            clearTimeout(timeout)
+            if (resolved) return
+            resolved = true
+            if (idleTimer) clearTimeout(idleTimer)
+            clearTimeout(overallTimeout)
             cleanup().then(() => reject(error))
           })
       })
@@ -373,12 +481,25 @@ export class KafkaService {
 
   async getConsumerGroups(connectionId: string) {
     const { admin } = this.getInstance(connectionId)
-    const groups = await admin.listGroups()
 
-    return groups.groups.map((g) => ({
-      groupId: g.groupId,
-      protocolType: g.protocolType
-    }))
+    // Retry logic for intermittent empty results
+    const maxRetries = 3
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const groups = await admin.listGroups()
+
+      // If we got results or it's the last attempt, return
+      if (groups.groups.length > 0 || attempt === maxRetries) {
+        return groups.groups.map((g) => ({
+          groupId: g.groupId,
+          protocolType: g.protocolType
+        }))
+      }
+
+      // Small delay before retry
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt))
+    }
+
+    return []
   }
 
   async getConsumerGroupDetails(connectionId: string, groupId: string) {
@@ -496,6 +617,8 @@ export class KafkaService {
     const { admin } = this.getInstance(connectionId)
 
     const topicOffsets = await admin.fetchTopicOffsets(topic)
+    // Convert to Map for O(1) lookup instead of O(n) find() in loop
+    const offsetMap = new Map(topicOffsets.map((p) => [p.partition, p]))
     const partitions =
       options.partitions || topicOffsets.map((p) => p.partition)
 
@@ -504,13 +627,13 @@ export class KafkaService {
     switch (options.type) {
       case 'earliest':
         newOffsets = partitions.map((partition) => {
-          const info = topicOffsets.find((p) => p.partition === partition)
+          const info = offsetMap.get(partition)
           return { partition, offset: info?.low || '0' }
         })
         break
       case 'latest':
         newOffsets = partitions.map((partition) => {
-          const info = topicOffsets.find((p) => p.partition === partition)
+          const info = offsetMap.get(partition)
           return { partition, offset: info?.high || '0' }
         })
         break

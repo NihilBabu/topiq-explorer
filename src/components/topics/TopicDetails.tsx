@@ -52,7 +52,8 @@ export function TopicDetails() {
     if (activeConnectionId && selectedTopic) {
       loadMessages(activeConnectionId, selectedTopic, { limit: 100 })
     }
-  }, [activeConnectionId, selectedTopic, loadMessages])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadMessages is a stable store action
+  }, [activeConnectionId, selectedTopic])
 
   // Open producer dialog when messageToRepublish is set
   useEffect(() => {
@@ -151,7 +152,7 @@ export function TopicDetails() {
         <div className="flex items-center gap-2">
           <Dialog open={isDeleteRecordsOpen} onOpenChange={setIsDeleteRecordsOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" aria-label="Delete records from topic">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete Records
               </Button>
@@ -206,7 +207,7 @@ export function TopicDetails() {
 
           <Dialog open={isProducerOpen} onOpenChange={setIsProducerOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" aria-label="Produce a new message to topic">
                 <Send className="mr-2 h-4 w-4" />
                 Produce Message
               </Button>
@@ -257,7 +258,7 @@ export function TopicDetails() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col min-h-0">
         <TabsList className="mx-4 mt-2 justify-start bg-transparent">
           <TabsTrigger value="messages" className="gap-2">
             <MessageSquare className="h-4 w-4" />
@@ -277,7 +278,7 @@ export function TopicDetails() {
           <MessageViewer />
         </TabsContent>
 
-        <TabsContent value="partitions" className="flex-1 m-0 p-4">
+        <TabsContent value="partitions" className="flex-1 m-0 p-4 min-h-0 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="space-y-2">
               <div className="grid grid-cols-6 gap-4 px-4 py-2 text-sm font-medium text-muted-foreground">
@@ -305,31 +306,33 @@ export function TopicDetails() {
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="config" className="flex-1 m-0 p-4">
-          <ScrollArea className="h-full">
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-4 px-4 py-2 text-sm font-medium text-muted-foreground">
-                <div>Name</div>
-                <div>Value</div>
-                <div>Source</div>
-              </div>
-              {topicConfig.map((config) => (
-                <div
-                  key={config.configName}
-                  className="grid grid-cols-3 gap-4 rounded-md border border-border px-4 py-3 text-sm transition-colors hover:bg-accent/50"
-                >
-                  <div className="font-medium">{config.configName}</div>
-                  <div className="font-mono text-muted-foreground truncate">
-                    {config.isSensitive ? '********' : config.configValue || '-'}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {config.isDefault && <Badge variant="secondary">Default</Badge>}
-                    {config.readOnly && <Badge variant="outline">Read Only</Badge>}
-                  </div>
+        <TabsContent value="config" className="relative flex-1 m-0 min-h-0">
+          <div className="absolute inset-0 p-4">
+            <ScrollArea className="h-full">
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-4 px-4 py-2 text-sm font-medium text-muted-foreground">
+                  <div>Name</div>
+                  <div>Value</div>
+                  <div>Source</div>
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+                {topicConfig.map((config) => (
+                  <div
+                    key={config.configName}
+                    className="grid grid-cols-3 gap-4 rounded-md border border-border px-4 py-3 text-sm transition-colors hover:bg-accent/50"
+                  >
+                    <div className="font-medium">{config.configName}</div>
+                    <div className="font-mono text-muted-foreground truncate">
+                      {config.isSensitive ? '********' : config.configValue || '-'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {config.isDefault && <Badge variant="secondary">Default</Badge>}
+                      {config.readOnly && <Badge variant="outline">Read Only</Badge>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

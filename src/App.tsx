@@ -13,7 +13,8 @@ export default function App() {
 
   useEffect(() => {
     loadConnections()
-  }, [loadConnections])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadConnections is a stable store action
+  }, [])
 
   return (
     <div className="dark h-screen w-screen overflow-hidden bg-background text-foreground">

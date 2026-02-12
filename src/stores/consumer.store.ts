@@ -27,7 +27,18 @@ export const useConsumerStore = create<ConsumerState>((set) => ({
   loadConsumerGroups: async (connectionId) => {
     set({ isLoading: true, error: null })
     try {
-      const groups = await window.api.kafka.getConsumerGroups(connectionId)
+      const result = await window.api.kafka.getConsumerGroups(connectionId) as unknown
+      // Handle standardized IPC response
+      let groups: ConsumerGroup[]
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; data?: ConsumerGroup[]; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to load consumer groups')
+        }
+        groups = typedResult.data ?? []
+      } else {
+        groups = result as ConsumerGroup[]
+      }
       set({ consumerGroups: groups.sort((a: ConsumerGroup, b: ConsumerGroup) => a.groupId.localeCompare(b.groupId)), isLoading: false })
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load consumer groups', isLoading: false })
@@ -60,7 +71,14 @@ export const useConsumerStore = create<ConsumerState>((set) => ({
   deleteGroup: async (connectionId, groupId) => {
     set({ isLoading: true, error: null })
     try {
-      await window.api.kafka.deleteConsumerGroup(connectionId, groupId)
+      const result = await window.api.kafka.deleteConsumerGroup(connectionId, groupId) as unknown
+      // Handle standardized IPC response
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to delete consumer group')
+        }
+      }
       set((state) => ({
         consumerGroups: state.consumerGroups.filter((g) => g.groupId !== groupId),
         selectedGroupId: state.selectedGroupId === groupId ? null : state.selectedGroupId,
@@ -76,7 +94,14 @@ export const useConsumerStore = create<ConsumerState>((set) => ({
   resetOffsets: async (connectionId, groupId, topic, options) => {
     set({ isLoading: true, error: null })
     try {
-      await window.api.kafka.resetOffsets(connectionId, groupId, topic, options)
+      const resetResult = await window.api.kafka.resetOffsets(connectionId, groupId, topic, options) as unknown
+      // Handle standardized IPC response
+      if (resetResult && typeof resetResult === 'object' && 'success' in resetResult) {
+        const typedResult = resetResult as { success: boolean; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to reset offsets')
+        }
+      }
       // Reload group details after resetting offsets
       const result = await window.api.kafka.getConsumerGroupDetails(connectionId, groupId)
       // Handle structured response format from IPC handler

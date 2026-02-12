@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog'
-import { Users, LayoutGrid, RotateCcw, UserCircle } from 'lucide-react'
+import { Users, LayoutGrid, RotateCcw, UserCircle, Loader2 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function ConsumerGroupDetails() {
@@ -21,8 +21,9 @@ export function ConsumerGroupDetails() {
 
   const selectedGroupId = useConsumerStore((state) => state.selectedGroupId)
   const groupDetails = useConsumerStore((state) => state.groupDetails)
+  const isLoading = useConsumerStore((state) => state.isLoading)
 
-  if (!selectedGroupId || !groupDetails) {
+  if (!selectedGroupId) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between border-b border-border p-4">
@@ -45,8 +46,49 @@ export function ConsumerGroupDetails() {
     )
   }
 
+  // Show loading state while fetching group details
+  if (isLoading && !groupDetails) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div>
+            <h2 className="text-lg font-semibold">{selectedGroupId}</h2>
+            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-5 w-24 rounded-full" />
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            <Loader2 className="mx-auto h-8 w-8 mb-3 animate-spin" />
+            <p>Loading group details...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!groupDetails) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div>
+            <h2 className="text-lg font-semibold">{selectedGroupId}</h2>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            <UserCircle className="mx-auto h-12 w-12 mb-3 opacity-30" />
+            <p>Failed to load group details</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const totalLag = Object.values(groupDetails.offsets).reduce(
-    (sum, partitions) => sum + partitions.reduce((pSum, p) => pSum + p.lag, 0),
+    (sum, partitions) => sum + partitions.reduce((pSum, p) => pSum + (p.lag ?? 0), 0),
     0
   )
 
@@ -99,7 +141,7 @@ export function ConsumerGroupDetails() {
                 <div className="text-center text-muted-foreground py-8">No topic offsets found</div>
               ) : (
                 Object.entries(groupDetails.offsets).map(([topic, partitions]) => {
-                  const topicLag = partitions.reduce((sum, p) => sum + p.lag, 0)
+                  const topicLag = partitions.reduce((sum, p) => sum + (p.lag ?? 0), 0)
 
                   return (
                     <div key={topic} className="rounded-md border border-border">
@@ -113,7 +155,7 @@ export function ConsumerGroupDetails() {
                         </div>
                         <Dialog open={resetTopic === topic} onOpenChange={(open) => setResetTopic(open ? topic : null)}>
                           <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" aria-label={`Reset offsets for topic ${topic}`}>
                               <RotateCcw className="mr-2 h-4 w-4" />
                               Reset Offsets
                             </Button>
@@ -145,8 +187,8 @@ export function ConsumerGroupDetails() {
                           >
                             <div className="font-medium">{partition.partition}</div>
                             <div className="font-mono text-muted-foreground">{partition.offset}</div>
-                            <div className={partition.lag > 0 ? 'text-warning-foreground' : 'text-muted-foreground'}>
-                              {partition.lag.toLocaleString()}
+                            <div className={partition.lag != null && partition.lag > 0 ? 'text-warning-foreground' : 'text-muted-foreground'}>
+                              {partition.lag?.toLocaleString() ?? 'N/A'}
                             </div>
                           </div>
                         ))}

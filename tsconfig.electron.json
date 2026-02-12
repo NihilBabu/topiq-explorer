@@ -11,9 +11,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "outDir": "dist-electron",
-    "rootDir": "electron",
+    "rootDir": ".",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*", "shared/**/*"]
 }

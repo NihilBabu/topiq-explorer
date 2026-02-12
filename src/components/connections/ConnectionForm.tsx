@@ -6,8 +6,29 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { getRandomColor, CONNECTION_COLORS } from '@/lib/utils'
-import type { KafkaConnection } from '@/types/kafka.types'
-import { Loader2, Check, X } from 'lucide-react'
+import type { KafkaConnection, TLSConfig } from '@/types/kafka.types'
+import { Loader2, Check, X, Upload } from 'lucide-react'
+
+interface CertFile {
+  filename: string
+  content: string
+}
+
+function getInitialSslEnabled(ssl: KafkaConnection['ssl']): boolean {
+  return ssl === true || (typeof ssl === 'object' && ssl !== null)
+}
+
+function getInitialSslMode(ssl: KafkaConnection['ssl']): 'simple' | 'certificates' {
+  if (typeof ssl === 'object' && ssl !== null) {
+    return 'certificates'
+  }
+  return 'simple'
+}
+
+function getInitialCertFile(value: string | undefined): CertFile | null {
+  if (!value) return null
+  return { filename: 'loaded from connection', content: value }
+}
 
 interface ConnectionFormProps {
   connection?: KafkaConnection | null
@@ -15,9 +36,18 @@ interface ConnectionFormProps {
 }
 
 export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
+  const existingSsl = connection?.ssl
+  const existingTls = typeof existingSsl === 'object' && existingSsl !== null ? existingSsl as TLSConfig : null
+
   const [name, setName] = useState(connection?.name || '')
   const [brokers, setBrokers] = useState(connection?.brokers.join(', ') || '')
-  const [ssl, setSsl] = useState(connection?.ssl || false)
+  const [sslEnabled, setSslEnabled] = useState(getInitialSslEnabled(existingSsl))
+  const [sslMode, setSslMode] = useState<'simple' | 'certificates'>(getInitialSslMode(existingSsl))
+  const [caCert, setCaCert] = useState<CertFile | null>(getInitialCertFile(existingTls?.ca))
+  const [clientCert, setClientCert] = useState<CertFile | null>(getInitialCertFile(existingTls?.cert))
+  const [clientKey, setClientKey] = useState<CertFile | null>(getInitialCertFile(existingTls?.key))
+  const [passphrase, setPassphrase] = useState(existingTls?.passphrase || '')
+  const [rejectUnauthorized, setRejectUnauthorized] = useState(existingTls?.rejectUnauthorized !== false)
   const [authType, setAuthType] = useState<'none' | 'sasl'>(connection?.sasl ? 'sasl' : 'none')
   const [saslMechanism, setSaslMechanism] = useState<'plain' | 'scram-sha-256' | 'scram-sha-512'>(
     connection?.sasl?.mechanism || 'plain'
@@ -34,10 +64,53 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
   const updateConnection = useConnectionStore((state) => state.updateConnection)
   const testConnection = useConnectionStore((state) => state.testConnection)
 
+  const handlePickCertFile = async (
+    setter: (file: CertFile | null) => void
+  ) => {
+    try {
+      const result = await window.api.connections.pickCertFile()
+      if (!result.success) {
+        toast({
+          title: 'Invalid File',
+          description: result.error,
+          variant: 'destructive'
+        })
+        return
+      }
+      if (result.data) {
+        setter(result.data)
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to pick certificate file',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const getSslValue = (): boolean | TLSConfig | undefined => {
+    if (!sslEnabled) return undefined
+
+    if (sslMode === 'simple') return true
+
+    const tlsConfig: TLSConfig = {}
+    if (caCert) tlsConfig.ca = caCert.content
+    if (clientCert) tlsConfig.cert = clientCert.content
+    if (clientKey) tlsConfig.key = clientKey.content
+    if (passphrase) tlsConfig.passphrase = passphrase
+    if (!rejectUnauthorized) tlsConfig.rejectUnauthorized = false
+
+    // If no custom TLS fields were set, fall back to simple SSL
+    if (Object.keys(tlsConfig).length === 0) return true
+
+    return tlsConfig
+  }
+
   const getConnectionData = () => ({
     name: name.trim(),
     brokers: brokers.split(',').map((b) => b.trim()).filter(Boolean),
-    ssl,
+    ssl: getSslValue(),
     sasl:
       authType === 'sasl'
         ? {
@@ -94,6 +167,49 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
     }
   }
 
+  const CertFileInput = ({
+    label,
+    value,
+    onChange
+  }: {
+    label: string
+    value: CertFile | null
+    onChange: (file: CertFile | null) => void
+  }) => (
+    <div className="space-y-1">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-2">
+        {value ? (
+          <>
+            <span className="flex-1 truncate rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+              {value.filename}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => onChange(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => handlePickCertFile(onChange)}
+          >
+            <Upload className="h-4 w-4" />
+            Select File
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -133,20 +249,74 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="ssl"
-            checked={ssl}
-            onChange={(e) => setSsl(e.target.checked)}
-            className="h-4 w-4 rounded border-input"
-          />
-          <Label htmlFor="ssl" className="cursor-pointer">
-            Use SSL
-          </Label>
-        </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="ssl"
+          checked={sslEnabled}
+          onChange={(e) => setSslEnabled(e.target.checked)}
+          className="h-4 w-4 rounded border-input"
+        />
+        <Label htmlFor="ssl" className="cursor-pointer">
+          Use SSL/TLS
+        </Label>
       </div>
+
+      {sslEnabled && (
+        <div className="space-y-4 rounded-md border border-border p-4">
+          <div className="space-y-2">
+            <Label>TLS Mode</Label>
+            <Select value={sslMode} onValueChange={(v) => setSslMode(v as 'simple' | 'certificates')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="simple">System CA (default)</SelectItem>
+                <SelectItem value="certificates">Custom Certificates</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {sslMode === 'certificates' && (
+            <div className="space-y-4">
+              <CertFileInput label="CA Certificate" value={caCert} onChange={setCaCert} />
+              <CertFileInput label="Client Certificate" value={clientCert} onChange={setClientCert} />
+              <CertFileInput label="Client Key" value={clientKey} onChange={setClientKey} />
+
+              <div className="space-y-1">
+                <Label htmlFor="passphrase">Key Passphrase</Label>
+                <Input
+                  id="passphrase"
+                  type="password"
+                  placeholder="Leave empty if key is not encrypted"
+                  value={passphrase}
+                  onChange={(e) => setPassphrase(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="rejectUnauthorized"
+                    checked={!rejectUnauthorized}
+                    onChange={(e) => setRejectUnauthorized(!e.target.checked)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <Label htmlFor="rejectUnauthorized" className="cursor-pointer">
+                    Skip certificate verification
+                  </Label>
+                </div>
+                {!rejectUnauthorized && (
+                  <p className="text-xs text-amber-500">
+                    Warning: Disabling certificate verification makes the connection vulnerable to man-in-the-middle attacks. Only use this for development or self-signed certificates.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label>Authentication</Label>

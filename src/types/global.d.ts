@@ -1,8 +1,16 @@
+interface TLSConfig {
+  ca?: string
+  cert?: string
+  key?: string
+  passphrase?: string
+  rejectUnauthorized?: boolean
+}
+
 interface KafkaConnection {
   id: string
   name: string
   brokers: string[]
-  ssl?: boolean
+  ssl?: boolean | TLSConfig
   sasl?: {
     mechanism: 'plain' | 'scram-sha-256' | 'scram-sha-512'
     username: string
@@ -84,6 +92,7 @@ interface WindowApi {
     save: (connection: Omit<KafkaConnection, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<KafkaConnection>
     delete: (id: string) => Promise<void>
     test: (connection: Omit<KafkaConnection, 'id' | 'createdAt' | 'updatedAt'>) => Promise<{ success: boolean; error?: string }>
+    pickCertFile: () => Promise<{ success: true; data: { filename: string; content: string } | null } | { success: false; error: string }>
   }
   kafka: {
     connect: (connectionId: string) => Promise<void>

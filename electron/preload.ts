@@ -1,67 +1,25 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type {
+  KafkaConnection,
+  TopicConfig,
+  MessageOptions,
+  ProduceMessage,
+  ResetOffsetOptions,
+  UpdateChannel,
+  UpdateCheckResult,
+  DownloadProgress
+} from '../shared/types'
 
-export interface KafkaConnection {
-  id: string
-  name: string
-  brokers: string[]
-  ssl?: boolean
-  sasl?: {
-    mechanism: 'plain' | 'scram-sha-256' | 'scram-sha-512'
-    username: string
-    password: string
-  }
-  schemaRegistry?: {
-    url: string
-    username?: string
-    password?: string
-  }
-  color?: string
-  createdAt: number
-  updatedAt: number
-}
-
-export interface TopicConfig {
-  name: string
-  numPartitions: number
-  replicationFactor: number
-  configEntries?: Record<string, string>
-}
-
-export interface MessageOptions {
-  partition?: number
-  fromOffset?: string
-  fromTimestamp?: number
-  limit?: number
-}
-
-export interface ProduceMessage {
-  key?: string
-  value: string | null
-  headers?: Record<string, string>
-  partition?: number
-}
-
-export interface ResetOffsetOptions {
-  type: 'earliest' | 'latest' | 'timestamp' | 'offset'
-  timestamp?: number
-  offset?: string
-  partitions?: number[]
-}
-
-export type UpdateChannel = 'stable' | 'beta' | 'alpha'
-
-export interface UpdateCheckResult {
-  updateAvailable: boolean
-  version: string
-  releaseNotes?: string
-  releaseDate?: string
-}
-
-export interface DownloadProgress {
-  bytesPerSecond: number
-  percent: number
-  transferred: number
-  total: number
+// Re-export types for consumers of preload
+export type {
+  KafkaConnection,
+  TopicConfig,
+  MessageOptions,
+  ProduceMessage,
+  ResetOffsetOptions,
+  UpdateChannel,
+  UpdateCheckResult,
+  DownloadProgress
 }
 
 const api = {
@@ -73,7 +31,8 @@ const api = {
       ipcRenderer.invoke('connections:save', connection),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('connections:delete', id),
     test: (connection: Omit<KafkaConnection, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke('connections:test', connection)
+      ipcRenderer.invoke('connections:test', connection),
+    pickCertFile: () => ipcRenderer.invoke('connections:pickCertFile')
   },
 
   // Kafka operations
