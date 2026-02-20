@@ -1,6 +1,6 @@
-# Topiq Testing Guide
+# Topiq Explorer Testing Guide
 
-This guide covers how to test Topiq with different authentication methods using Docker.
+This guide covers how to test Topiq Explorer with different authentication methods using Docker.
 
 ## Prerequisites
 
@@ -133,7 +133,7 @@ Keystore password: `topiq`
 
 1. Start an external consumer (or use Kafka CLI):
    ```bash
-   docker exec topiq-plain kafka-console-consumer \
+   docker exec topiq-explorer-plain kafka-console-consumer \
      --bootstrap-server localhost:9092 \
      --topic test-topic \
      --group test-group \
@@ -155,7 +155,7 @@ Keystore password: `topiq`
 
 1. Wait for SCRAM users to be created (check docker logs):
    ```bash
-   docker logs topiq-scram-init
+   docker logs topiq-explorer-scram-init
    ```
 2. Create a new connection with SCRAM-SHA-256 settings
 3. Test connection - should succeed
@@ -177,17 +177,17 @@ Keystore password: `topiq`
 docker-compose ps
 
 # Check Kafka logs
-docker logs topiq-plain
+docker logs topiq-explorer-plain
 ```
 
 ### Authentication Failed
 
 ```bash
 # For SASL/PLAIN, check JAAS config
-docker exec topiq-sasl-plain cat /etc/kafka/kafka_server_jaas.conf
+docker exec topiq-explorer-sasl-plain cat /etc/kafka/kafka_server_jaas.conf
 
 # For SCRAM, verify users were created
-docker logs topiq-scram-init
+docker logs topiq-explorer-scram-init
 ```
 
 ### SSL Handshake Failed
@@ -219,7 +219,7 @@ To generate test data for load testing:
 
 ```bash
 # Produce 1000 messages to a topic
-docker exec topiq-plain bash -c '
+docker exec topiq-explorer-plain bash -c '
   for i in $(seq 1 1000); do
     echo "{\"id\": $i, \"message\": \"Test message $i\"}"
   done | kafka-console-producer --bootstrap-server localhost:9092 --topic load-test

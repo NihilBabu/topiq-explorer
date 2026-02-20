@@ -10,14 +10,14 @@ function deriveEncryptionKey(): string {
     // Use machine ID as primary source (unique per machine)
     const machineId = machineIdSync()
     return createHash('sha256')
-      .update(`kafka-explorer-${machineId}`)
+      .update(`topiq-explorer-${machineId}`)
       .digest('hex')
       .slice(0, 32)
   } catch {
     // Fallback: derive from hostname + username + homedir
     const fallbackData = `${os.hostname()}-${os.userInfo().username}-${os.homedir()}`
     return createHash('sha256')
-      .update(`kafka-explorer-${fallbackData}`)
+      .update(`topiq-explorer-${fallbackData}`)
       .digest('hex')
       .slice(0, 32)
   }
@@ -29,7 +29,7 @@ interface StoreSchema {
 
 // Get the store path without creating a Store instance
 function getStorePath(storeName: string): string {
-  const appName = 'topiq' // Must match the app name in package.json
+  const appName = 'topiq-explorer' // Must match the app name in package.json
   let configDir: string
 
   switch (process.platform) {
@@ -51,7 +51,7 @@ export class ConnectionStore {
 
   constructor() {
     const encryptionKey = deriveEncryptionKey()
-    const storeName = 'kafka-explorer-connections'
+    const storeName = 'topiq-explorer-connections'
 
     this.store = new Store<StoreSchema>({
       name: storeName,

@@ -62,7 +62,7 @@ export function MainLayout() {
       <div className="drag-region flex h-12 items-center justify-between border-b border-border-mute bg-bg-sidebar px-4 shrink-0">
         <div className="flex items-center gap-2 pl-16">
           <Terminal className="h-4 w-4 text-accent-active" />
-          <span className="text-sm font-semibold text-text-primary">Kafka Explorer</span>
+          <span className="text-sm font-semibold text-text-primary">Topiq Explorer</span>
         </div>
         <div className="no-drag flex items-center gap-2 text-xs text-text-secondary">
           {activeConnection && isConnected && (

@@ -74,7 +74,7 @@ export class KafkaService {
     }
 
     return new Kafka({
-      clientId: `kafka-explorer-${connection.id}`,
+      clientId: `topiq-explorer-${connection.id}`,
       brokers: connection.brokers,
       ssl: sslOption,
       sasl,
@@ -298,6 +298,23 @@ export class KafkaService {
     return configs.resources[0]?.configEntries || []
   }
 
+  async getBrokerConfig(connectionId: string) {
+    const { admin } = this.getInstance(connectionId)
+    const cluster = await admin.describeCluster()
+
+    if (cluster.brokers.length === 0) {
+      return []
+    }
+
+    // Fetch config from the first broker (broker-level configs are cluster-wide)
+    const configs = await admin.describeConfigs({
+      includeSynonyms: false,
+      resources: [{ type: 4, name: String(cluster.brokers[0].nodeId) }] // 4 = BROKER
+    })
+
+    return configs.resources[0]?.configEntries || []
+  }
+
   async createTopic(connectionId: string, config: TopicConfig): Promise<void> {
     const { admin } = this.getInstance(connectionId)
     await admin.createTopics({
@@ -367,7 +384,7 @@ export class KafkaService {
     totalExpected = Math.min(totalExpected, maxLimit)
 
     // 2. Create consumer, subscribe, seek, and collect messages
-    const groupId = `kafka-explorer-consumer-${randomUUID()}`
+    const groupId = `topiq-explorer-consumer-${randomUUID()}`
     const consumer = kafka.consumer({ groupId })
 
     // Track this temporary group for cleanup on shutdown

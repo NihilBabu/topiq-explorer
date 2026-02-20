@@ -101,6 +101,7 @@ interface WindowApi {
     getTopics: (connectionId: string) => Promise<string[]>
     getTopicMetadata: (connectionId: string, topic: string) => Promise<any>
     getTopicConfig: (connectionId: string, topic: string) => Promise<any>
+    getBrokerConfig: (connectionId: string) => Promise<any>
     createTopic: (connectionId: string, config: TopicConfig) => Promise<void>
     deleteTopic: (connectionId: string, topic: string) => Promise<void>
     getMessages: (connectionId: string, topic: string, options?: MessageOptions) => Promise<any[]>

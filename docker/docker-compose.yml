@@ -3,7 +3,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     hostname: zookeeper
-    container_name: kafka-explorer-zookeeper
+    container_name: topiq-explorer-zookeeper
     ports:
       - "2181:2181"
     environment:
@@ -19,7 +19,7 @@ services:
   kafka-plain:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka-plain
-    container_name: kafka-explorer-plain
+    container_name: topiq-explorer-plain
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -46,7 +46,7 @@ services:
   kafka-sasl-plain:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka-sasl-plain
-    container_name: kafka-explorer-sasl-plain
+    container_name: topiq-explorer-sasl-plain
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -76,7 +76,7 @@ services:
   kafka-sasl-scram:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka-sasl-scram
-    container_name: kafka-explorer-sasl-scram
+    container_name: topiq-explorer-sasl-scram
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -111,7 +111,7 @@ services:
   kafka-ssl:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka-ssl
-    container_name: kafka-explorer-ssl
+    container_name: topiq-explorer-ssl
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -143,7 +143,7 @@ services:
   # Init container to create SCRAM users
   kafka-scram-init:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka-explorer-scram-init
+    container_name: topiq-explorer-scram-init
     depends_on:
       kafka-sasl-scram:
         condition: service_started
@@ -159,4 +159,4 @@ services:
 
 networks:
   default:
-    name: kafka-explorer-network
+    name: topiq-explorer-network

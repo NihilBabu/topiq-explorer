@@ -55,16 +55,16 @@ jobs:
 
           ### macOS
           #### Apple Silicon (M1/M2/M3)
-          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}-arm64.dmg\`
-          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-arm64-mac.zip\`
+          - **DMG**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-arm64.dmg\`
+          - **ZIP**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-arm64-mac.zip\`
 
           #### Intel
-          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}.dmg\`
-          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-mac.zip\`
+          - **DMG**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.dmg\`
+          - **ZIP**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-mac.zip\`
 
           ### Windows
-          - **Installer**: Download \`Topiq-Setup-${{ steps.version.outputs.version }}.exe\`
-          - **Portable**: Download \`Topiq-${{ steps.version.outputs.version }}.exe\`
+          - **Installer**: Download \`Topiq Explorer-Setup-${{ steps.version.outputs.version }}.exe\`
+          - **Portable**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.exe\`
           EOF
 
           cat release_notes.md
@@ -75,7 +75,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: Topiq ${{ steps.version.outputs.version }}
+          name: Topiq Explorer ${{ steps.version.outputs.version }}
           body_path: release_notes.md
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}

@@ -1,6 +1,6 @@
 {
-  "name": "topiq",
-  "version": "0.0.8-alpha",
+  "name": "topiq-explorer",
+  "version": "0.0.0",
   "description": "A cross-platform desktop application for exploring and managing Apache Kafka clusters",
   "main": "dist-electron/main.js",
   "author": "<babunihil@gmail.com>",
@@ -71,12 +71,12 @@
     "vite-plugin-electron-renderer": "^0.14.5"
   },
   "build": {
-    "appId": "com.topiq.app",
-    "productName": "Topiq",
+    "appId": "com.topiq-explorer.app",
+    "productName": "Topiq Explorer",
     "publish": {
       "provider": "github",
       "owner": "NihilBabu",
-      "repo": "topiq"
+      "repo": "topiq-explorer"
     },
     "directories": {
       "output": "release"
