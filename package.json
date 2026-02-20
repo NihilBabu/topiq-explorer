@@ -75,7 +75,7 @@
     "productName": "Topiq Explorer",
     "publish": {
       "provider": "github",
-      "owner": "NihilBabu",
+      "owner": "exitCodeNihil",
       "repo": "topiq-explorer"
     },
     "directories": {

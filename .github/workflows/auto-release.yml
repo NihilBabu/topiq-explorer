@@ -40,15 +40,50 @@ jobs:
           echo "patch=$PATCH" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION"
 
+      - name: Detect bump type from PR labels
+        id: bump_type
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          BUMP="minor"
+          PR_JSON=$(gh api "/repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" 2>/dev/null || echo "[]")
+          PR_COUNT=$(echo "$PR_JSON" | jq 'length')
+
+          if [ "$PR_COUNT" -gt 0 ]; then
+            LABELS=$(echo "$PR_JSON" | jq -r '.[0].labels[].name')
+            echo "PR labels: $LABELS"
+
+            if echo "$LABELS" | grep -q "^release:major$"; then
+              BUMP="major"
+            elif echo "$LABELS" | grep -q "^release:patch$"; then
+              BUMP="patch"
+            fi
+          else
+            echo "No PR found for this commit, defaulting to minor bump"
+          fi
+
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "Bump type: $BUMP"
+
       - name: Determine new version
         id: bump
         run: |
           MAJOR=${{ steps.current.outputs.major }}
           MINOR=${{ steps.current.outputs.minor }}
+          PATCH=${{ steps.current.outputs.patch }}
+          BUMP_TYPE=${{ steps.bump_type.outputs.bump }}
 
           if [ "$MAJOR" -eq 0 ]; then
             NEW_VERSION="1.0.0"
             echo "Initial stable release: 0.x.x -> 1.0.0"
+          elif [ "$BUMP_TYPE" = "major" ]; then
+            NEW_MAJOR=$((MAJOR + 1))
+            NEW_VERSION="${NEW_MAJOR}.0.0"
+            echo "Major bump: ${{ steps.current.outputs.version }} -> $NEW_VERSION"
+          elif [ "$BUMP_TYPE" = "patch" ]; then
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            echo "Patch bump: ${{ steps.current.outputs.version }} -> $NEW_VERSION"
           else
             NEW_MINOR=$((MINOR + 1))
             NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
@@ -97,3 +132,13 @@ jobs:
         run: |
           git push origin main
           git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          gh release create "v${{ steps.bump.outputs.new_version }}" \
+            --title "Topiq Explorer ${{ steps.bump.outputs.new_version }}" \
+            --generate-notes \
+            --draft

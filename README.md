@@ -29,7 +29,7 @@ A cross-platform desktop application for exploring and managing Apache Kafka clu
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/NihilBabu/topiq-explorer/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/exitCodeNihil/topiq-explorer/releases) page.
 
 #### macOS
 - **DMG**: Download `Topiq Explorer-x.x.x.dmg` and drag to Applications
@@ -56,7 +56,7 @@ Download the latest release for your platform from the [Releases](https://github
 
 ```bash
 # Clone the repository
-git clone https://github.com/NihilBabu/topiq-explorer.git
+git clone https://github.com/exitCodeNihil/topiq-explorer.git
 cd topiq-explorer
 
 # Install dependencies
@@ -97,6 +97,14 @@ Build artifacts are output to the `release/` directory.
 ├── build/              # Build resources (icons)
 └── release/            # Build output
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, branching model, and PR guidelines.
+
+## Releases
+
+Releases are automated via GitHub Actions. Version bumps are controlled by PR labels. See [RELEASING.md](RELEASING.md) for details.
 
 ## License
 
