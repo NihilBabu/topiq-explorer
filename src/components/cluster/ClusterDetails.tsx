@@ -1,18 +1,23 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useConnectionStore } from '@/stores/connection.store'
 import { useTopicStore } from '@/stores/topic.store'
 import { useConsumerStore } from '@/stores/consumer.store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Server, Crown, Network, Hash } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Server, Crown, Network, Hash, Search, Settings } from 'lucide-react'
 
 export function ClusterDetails() {
+  const [configSearch, setConfigSearch] = useState('')
   const activeConnectionId = useConnectionStore((state) => state.activeConnectionId)
   const clusterInfo = useConnectionStore((state) => state.clusterInfo)
   const isLoadingClusterInfo = useConnectionStore((state) => state.isLoadingClusterInfo)
   const loadClusterInfo = useConnectionStore((state) => state.loadClusterInfo)
   const activeConnection = useConnectionStore((state) => state.getActiveConnection())
+  const brokerConfig = useConnectionStore((state) => state.brokerConfig)
+  const isLoadingBrokerConfig = useConnectionStore((state) => state.isLoadingBrokerConfig)
+  const loadBrokerConfig = useConnectionStore((state) => state.loadBrokerConfig)
   const topics = useTopicStore((state) => state.topics)
   const consumerGroups = useConsumerStore((state) => state.consumerGroups)
 
@@ -21,6 +26,12 @@ export function ClusterDetails() {
       loadClusterInfo(activeConnectionId)
     }
   }, [activeConnectionId, clusterInfo, isLoadingClusterInfo, loadClusterInfo])
+
+  useEffect(() => {
+    if (activeConnectionId && brokerConfig.length === 0 && !isLoadingBrokerConfig) {
+      loadBrokerConfig(activeConnectionId)
+    }
+  }, [activeConnectionId, brokerConfig.length, isLoadingBrokerConfig, loadBrokerConfig])
 
   if (isLoadingClusterInfo) {
     return (
@@ -174,6 +185,63 @@ export function ClusterDetails() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Broker Configuration */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium text-muted-foreground">Broker Configuration</h3>
+            </div>
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search config..."
+                value={configSearch}
+                onChange={(e) => setConfigSearch(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+          </div>
+          {isLoadingBrokerConfig ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : brokerConfig.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8 rounded-lg border border-border">
+              Unable to load broker configuration
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-4 px-4 py-2 text-sm font-medium text-muted-foreground">
+                <div>Name</div>
+                <div>Value</div>
+                <div>Source</div>
+              </div>
+              {brokerConfig
+                .filter((config) =>
+                  configSearch === '' || config.configName.toLowerCase().includes(configSearch.toLowerCase())
+                )
+                .map((config) => (
+                  <div
+                    key={config.configName}
+                    className="grid grid-cols-3 gap-4 rounded-md border border-border px-4 py-3 text-sm transition-colors hover:bg-accent/50"
+                  >
+                    <div className="font-medium">{config.configName}</div>
+                    <div className="font-mono text-muted-foreground truncate">
+                      {config.isSensitive ? '********' : config.configValue || '-'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {config.isDefault && <Badge variant="secondary">Default</Badge>}
+                      {config.readOnly && <Badge variant="outline">Read Only</Badge>}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       </div>
     </ScrollArea>

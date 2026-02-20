@@ -55,32 +55,35 @@ jobs:
 
           ### macOS
           #### Apple Silicon (M1/M2/M3)
-          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}-arm64.dmg\`
-          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-arm64-mac.zip\`
+          - **DMG**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-arm64.dmg\`
+          - **ZIP**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-arm64-mac.zip\`
 
           #### Intel
-          - **DMG**: Download \`Topiq-${{ steps.version.outputs.version }}.dmg\`
-          - **ZIP**: Download \`Topiq-${{ steps.version.outputs.version }}-mac.zip\`
+          - **DMG**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.dmg\`
+          - **ZIP**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-mac.zip\`
 
           ### Windows
-          - **Installer**: Download \`Topiq-Setup-${{ steps.version.outputs.version }}.exe\`
-          - **Portable**: Download \`Topiq-${{ steps.version.outputs.version }}.exe\`
+          - **Installer**: Download \`Topiq Explorer-Setup-${{ steps.version.outputs.version }}.exe\`
+          - **Portable**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.exe\`
+
+          ### Linux
+          - **AppImage**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.AppImage\`
+          - **Debian**: Download \`topiq-explorer_${{ steps.version.outputs.version }}_amd64.deb\`
           EOF
 
           cat release_notes.md
 
-      - name: Create draft release (tag-triggered only)
+      - name: Verify release exists
         id: create_release
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Topiq ${{ steps.version.outputs.version }}
-          body_path: release_notes.md
-          draft: true
-          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" || \
+            gh release create "${{ github.ref_name }}" \
+              --title "Topiq Explorer ${{ steps.version.outputs.version }}" \
+              --generate-notes \
+              --draft
 
   build:
     needs: prepare-release
@@ -94,6 +97,9 @@ jobs:
           - os: windows-latest
             platform: win
             build_args: --win
+          - os: ubuntu-latest
+            platform: linux
+            build_args: --linux
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
@@ -150,6 +156,17 @@ jobs:
             release/*.exe
           if-no-files-found: error
 
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
+          if-no-files-found: error
+
   upload-release:
     needs: [prepare-release, build]
     runs-on: ubuntu-latest
@@ -170,6 +187,12 @@ jobs:
           name: windows-artifacts
           path: artifacts/win
 
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: artifacts/linux
+
       - name: List all artifacts
         run: |
           echo "All downloaded artifacts:"
@@ -181,7 +204,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Upload all artifacts to the release
-          for file in artifacts/mac/* artifacts/win/*; do
+          for file in artifacts/mac/* artifacts/win/* artifacts/linux/*; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
               gh release upload ${{ github.ref_name }} "$file" --clobber
@@ -195,7 +218,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Upload all artifacts to the existing release
-          for file in artifacts/mac/* artifacts/win/*; do
+          for file in artifacts/mac/* artifacts/win/* artifacts/linux/*; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
               gh release upload ${{ github.event.release.tag_name }} "$file" --clobber

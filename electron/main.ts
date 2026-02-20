@@ -283,6 +283,14 @@ ipcMain.handle('kafka:getTopicConfig', async (_, connectionId: string, topic: st
   }
 })
 
+ipcMain.handle('kafka:getBrokerConfig', async (_, connectionId: string) => {
+  try {
+    return ipcSuccess(await kafkaService.getBrokerConfig(connectionId))
+  } catch (error) {
+    return ipcError(error)
+  }
+})
+
 ipcMain.handle('kafka:createTopic', async (_, connectionId: string, config) => {
   try {
     await kafkaService.createTopic(connectionId, config)

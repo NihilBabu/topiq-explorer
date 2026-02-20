@@ -1,4 +1,4 @@
-# Topiq
+# Topiq Explorer
 
 A cross-platform desktop application for exploring and managing Apache Kafka clusters.
 
@@ -29,21 +29,21 @@ A cross-platform desktop application for exploring and managing Apache Kafka clu
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/NihilBabu/topiq/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/exitCodeNihil/topiq-explorer/releases) page.
 
 #### macOS
-- **DMG**: Download `Topiq-x.x.x.dmg` and drag to Applications
-- **ZIP**: Download `Topiq-x.x.x-mac.zip` for portable use
+- **DMG**: Download `Topiq Explorer-x.x.x.dmg` and drag to Applications
+- **ZIP**: Download `Topiq Explorer-x.x.x-mac.zip` for portable use
 
-> **Note**: The app is not code-signed. If you see "Topiq is damaged and can't be opened", run:
+> **Note**: The app is not code-signed. If you see "Topiq Explorer is damaged and can't be opened", run:
 > ```bash
-> xattr -cr /Applications/Topiq.app
+> xattr -cr "/Applications/Topiq Explorer.app"
 > ```
 > Or right-click the app → Open → Open (bypasses Gatekeeper).
 
 #### Windows
-- **Installer**: Download `Topiq-Setup-x.x.x.exe` for standard installation
-- **Portable**: Download `Topiq-x.x.x.exe` for portable use
+- **Installer**: Download `Topiq Explorer-Setup-x.x.x.exe` for standard installation
+- **Portable**: Download `Topiq Explorer-x.x.x.exe` for portable use
 
 ## Development
 
@@ -56,8 +56,8 @@ Download the latest release for your platform from the [Releases](https://github
 
 ```bash
 # Clone the repository
-git clone https://github.com/NihilBabu/topiq.git
-cd kafka-explorer
+git clone https://github.com/exitCodeNihil/topiq-explorer.git
+cd topiq-explorer
 
 # Install dependencies
 yarn install
@@ -97,6 +97,14 @@ Build artifacts are output to the `release/` directory.
 ├── build/              # Build resources (icons)
 └── release/            # Build output
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, branching model, and PR guidelines.
+
+## Releases
+
+Releases are automated via GitHub Actions. Version bumps are controlled by PR labels. See [RELEASING.md](RELEASING.md) for details.
 
 ## License
 

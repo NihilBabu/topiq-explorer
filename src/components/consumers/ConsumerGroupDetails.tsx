@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useConsumerStore } from '@/stores/consumer.store'
+import { useConnectionStore } from '@/stores/connection.store'
 import { OffsetManager } from './OffsetManager'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -12,8 +13,26 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog'
-import { Users, LayoutGrid, RotateCcw, UserCircle, Loader2 } from 'lucide-react'
+import { Users, LayoutGrid, RotateCcw, UserCircle, Loader2, Settings } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+
+// Broker-level configs relevant to consumer groups
+const GROUP_RELATED_CONFIGS = [
+  'group.max.session.timeout.ms',
+  'group.min.session.timeout.ms',
+  'group.max.size',
+  'group.initial.rebalance.delay.ms',
+  'group.consumer.max.session.timeout.ms',
+  'group.consumer.min.session.timeout.ms',
+  'group.consumer.max.heartbeat.interval.ms',
+  'group.consumer.min.heartbeat.interval.ms',
+  'offsets.topic.replication.factor',
+  'offsets.topic.num.partitions',
+  'offsets.retention.minutes',
+  'offsets.commit.timeout.ms',
+  'consumer.id.quota.soft.limit',
+  'consumer.id.quota.hard.limit',
+]
 
 export function ConsumerGroupDetails() {
   const [activeTab, setActiveTab] = useState('offsets')
@@ -22,6 +41,13 @@ export function ConsumerGroupDetails() {
   const selectedGroupId = useConsumerStore((state) => state.selectedGroupId)
   const groupDetails = useConsumerStore((state) => state.groupDetails)
   const isLoading = useConsumerStore((state) => state.isLoading)
+  const brokerConfig = useConnectionStore((state) => state.brokerConfig)
+
+  const groupRelatedConfigs = brokerConfig.filter((c) =>
+    GROUP_RELATED_CONFIGS.includes(c.configName) ||
+    c.configName.startsWith('group.') ||
+    c.configName.startsWith('offsets.')
+  )
 
   if (!selectedGroupId) {
     return (
@@ -132,6 +158,10 @@ export function ConsumerGroupDetails() {
             <Users className="h-4 w-4" />
             Members
           </TabsTrigger>
+          <TabsTrigger value="config" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Configuration
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="offsets" className="flex-1 m-0 p-4">
@@ -221,6 +251,43 @@ export function ConsumerGroupDetails() {
                       <div className="font-medium">{member.clientId}</div>
                       <div className="text-muted-foreground">{member.clientHost}</div>
                       <div className="font-mono text-xs text-muted-foreground truncate">{member.memberId}</div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="config" className="flex-1 m-0 p-4">
+          <ScrollArea className="h-full">
+            <div className="space-y-2">
+              {groupRelatedConfigs.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  No group-related broker configuration available.
+                  <br />
+                  <span className="text-xs">Visit the Cluster tab to load broker configuration.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-4 px-4 py-2 text-sm font-medium text-muted-foreground">
+                    <div>Name</div>
+                    <div>Value</div>
+                    <div>Source</div>
+                  </div>
+                  {groupRelatedConfigs.map((config) => (
+                    <div
+                      key={config.configName}
+                      className="grid grid-cols-3 gap-4 rounded-md border border-border px-4 py-3 text-sm transition-colors hover:bg-accent/50"
+                    >
+                      <div className="font-medium">{config.configName}</div>
+                      <div className="font-mono text-muted-foreground truncate">
+                        {config.isSensitive ? '********' : config.configValue || '-'}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {config.isDefault && <Badge variant="secondary">Default</Badge>}
+                        {config.readOnly && <Badge variant="outline">Read Only</Badge>}
+                      </div>
                     </div>
                   ))}
                 </>

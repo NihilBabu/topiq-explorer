@@ -1,0 +1,22 @@
+name: Require Release Label
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, labeled, unlabeled, reopened, synchronize]
+
+jobs:
+  check-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for release label
+        run: |
+          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          HAS_RELEASE_LABEL=$(echo "$LABELS" | jq '[.[] | select(startswith("release:"))] | length > 0')
+
+          if [ "$HAS_RELEASE_LABEL" = "true" ]; then
+            echo "✓ Release label found"
+          else
+            echo "::error::PRs to main require a release label: release:major, release:minor, or release:patch"
+            exit 1
+          fi

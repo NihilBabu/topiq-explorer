@@ -47,6 +47,7 @@ const api = {
     getTopics: (connectionId: string): Promise<string[]> => ipcRenderer.invoke('kafka:getTopics', connectionId),
     getTopicMetadata: (connectionId: string, topic: string) => ipcRenderer.invoke('kafka:getTopicMetadata', connectionId, topic),
     getTopicConfig: (connectionId: string, topic: string) => ipcRenderer.invoke('kafka:getTopicConfig', connectionId, topic),
+    getBrokerConfig: (connectionId: string) => ipcRenderer.invoke('kafka:getBrokerConfig', connectionId),
     createTopic: (connectionId: string, config: TopicConfig) => ipcRenderer.invoke('kafka:createTopic', connectionId, config),
     deleteTopic: (connectionId: string, topic: string) => ipcRenderer.invoke('kafka:deleteTopic', connectionId, topic),
 

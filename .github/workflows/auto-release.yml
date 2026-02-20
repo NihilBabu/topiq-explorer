@@ -1,0 +1,145 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  auto-release:
+    # Skip version-bump commits to prevent infinite loops
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Read current version
+        id: current
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
+          echo "patch=$PATCH" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Detect bump type from PR labels
+        id: bump_type
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          BUMP="minor"
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP '#\K[0-9]+' | head -1)
+
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Found PR #$PR_NUMBER from merge commit message"
+            LABELS=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name')
+            echo "PR labels: $LABELS"
+
+            if echo "$LABELS" | grep -q "^release:major$"; then
+              BUMP="major"
+            elif echo "$LABELS" | grep -q "^release:patch$"; then
+              BUMP="patch"
+            fi
+          else
+            echo "No PR number found in commit message, defaulting to minor bump"
+          fi
+
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "Bump type: $BUMP"
+
+      - name: Determine new version
+        id: bump
+        run: |
+          MAJOR=${{ steps.current.outputs.major }}
+          MINOR=${{ steps.current.outputs.minor }}
+          PATCH=${{ steps.current.outputs.patch }}
+          BUMP_TYPE=${{ steps.bump_type.outputs.bump }}
+
+          if [ "$MAJOR" -eq 0 ]; then
+            NEW_VERSION="1.0.0"
+            echo "Initial stable release: 0.x.x -> 1.0.0"
+          elif [ "$BUMP_TYPE" = "major" ]; then
+            NEW_MAJOR=$((MAJOR + 1))
+            NEW_VERSION="${NEW_MAJOR}.0.0"
+            echo "Major bump: ${{ steps.current.outputs.version }} -> $NEW_VERSION"
+          elif [ "$BUMP_TYPE" = "patch" ]; then
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            echo "Patch bump: ${{ steps.current.outputs.version }} -> $NEW_VERSION"
+          else
+            NEW_MINOR=$((MINOR + 1))
+            NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
+            echo "Minor bump: ${{ steps.current.outputs.version }} -> $NEW_VERSION"
+          fi
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version will be: $NEW_VERSION"
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          TAG="v${{ steps.bump.outputs.new_version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping release"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $TAG does not exist, proceeding"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update package.json version
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${{ steps.bump.outputs.new_version }}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Updated package.json to version ${{ steps.bump.outputs.new_version }}"
+
+      - name: Commit and tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add package.json
+          git commit -m "chore(release): v${{ steps.bump.outputs.new_version }}"
+
+          git tag "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Push commit and tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git push origin main
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          gh release create "v${{ steps.bump.outputs.new_version }}" \
+            --title "Topiq Explorer ${{ steps.bump.outputs.new_version }}" \
+            --generate-notes \
+            --draft

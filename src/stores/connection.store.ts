@@ -1,12 +1,14 @@
 import { create } from 'zustand'
-import type { KafkaConnection, ConnectionStatus, ClusterInfo } from '../types/kafka.types'
+import type { KafkaConnection, ConnectionStatus, ClusterInfo, ConfigEntry } from '../types/kafka.types'
 
 interface ConnectionState {
   connections: KafkaConnection[]
   activeConnectionId: string | null
   connectionStatus: Record<string, ConnectionStatus>
   clusterInfo: ClusterInfo | null
+  brokerConfig: ConfigEntry[]
   isLoadingClusterInfo: boolean
+  isLoadingBrokerConfig: boolean
   isLoading: boolean
   error: string | null
 
@@ -21,6 +23,7 @@ interface ConnectionState {
   disconnectFromCluster: (id: string) => Promise<void>
   getActiveConnection: () => KafkaConnection | null
   loadClusterInfo: (connectionId: string) => Promise<void>
+  loadBrokerConfig: (connectionId: string) => Promise<void>
 }
 
 export const useConnectionStore = create<ConnectionState>((set, get) => ({
@@ -28,7 +31,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   activeConnectionId: null,
   connectionStatus: {},
   clusterInfo: null,
+  brokerConfig: [],
   isLoadingClusterInfo: false,
+  isLoadingBrokerConfig: false,
   isLoading: false,
   error: null,
 
@@ -175,7 +180,8 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       set((state) => ({
         connectionStatus: { ...state.connectionStatus, [id]: 'disconnected' },
         activeConnectionId: state.activeConnectionId === id ? null : state.activeConnectionId,
-        clusterInfo: state.activeConnectionId === id ? null : state.clusterInfo
+        clusterInfo: state.activeConnectionId === id ? null : state.clusterInfo,
+        brokerConfig: state.activeConnectionId === id ? [] : state.brokerConfig
       }))
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to disconnect' })
@@ -203,6 +209,24 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       }
     } catch (error) {
       set({ isLoadingClusterInfo: false, error: error instanceof Error ? error.message : 'Failed to load cluster info' })
+    }
+  },
+
+  loadBrokerConfig: async (connectionId) => {
+    set({ isLoadingBrokerConfig: true })
+    try {
+      const result = await window.api.kafka.getBrokerConfig(connectionId) as unknown
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typedResult = result as { success: boolean; data?: ConfigEntry[]; error?: string }
+        if (!typedResult.success) {
+          throw new Error(typedResult.error || 'Failed to load broker config')
+        }
+        set({ brokerConfig: typedResult.data ?? [], isLoadingBrokerConfig: false })
+      } else {
+        set({ brokerConfig: result as ConfigEntry[], isLoadingBrokerConfig: false })
+      }
+    } catch (error) {
+      set({ isLoadingBrokerConfig: false, error: error instanceof Error ? error.message : 'Failed to load broker config' })
     }
   }
 }))
