@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { TopicList } from '../topics/TopicList'
 import { TopicDetails } from '../topics/TopicDetails'
@@ -10,7 +10,7 @@ import { useTopicStore } from '@/stores/topic.store'
 import { useConsumerStore } from '@/stores/consumer.store'
 import { Terminal } from 'lucide-react'
 import { UpdateNotification } from '../updates/UpdateNotification'
-import { UpdateSettings } from '../updates/UpdateSettings'
+import { UpdateChecker } from '../updates/UpdateChecker'
 
 const tabs = [
   { id: 'topics', label: 'Topics' },
@@ -35,7 +35,6 @@ function EmptyState({ message }: { message: string }) {
 
 export function MainLayout() {
   const [activeTab, setActiveTab] = useState('topics')
-  const [appVersion, setAppVersion] = useState<string>('')
   const activeConnectionId = useConnectionStore((state) => state.activeConnectionId)
   const connectionStatus = useConnectionStore((state) => state.connectionStatus)
   const connections = useConnectionStore((state) => state.connections)
@@ -44,10 +43,6 @@ export function MainLayout() {
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
   const isConnected = activeConnectionId && connectionStatus[activeConnectionId] === 'connected'
-
-  useEffect(() => {
-    window.api.updater.getVersion().then(setAppVersion)
-  }, [])
 
   const tabLabel = activeTab === 'topics' ? 'Topics' : activeTab === 'consumers' ? 'Groups' : 'Cluster'
   const selectedLabel = activeTab === 'topics'
@@ -145,26 +140,6 @@ export function MainLayout() {
                     <ClusterDetails />
                   )}
                 </div>
-
-                {/* Status Bar */}
-                <div className="flex h-8 items-center justify-between border-t border-border-mute bg-bg-sidebar px-4 text-xs text-text-secondary font-mono shrink-0">
-                  <div className="flex items-center gap-3">
-                    {activeConnection && isConnected && (
-                      <>
-                        <span className="flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-accent-active" />
-                          <span className="text-accent-active">Connected</span>
-                        </span>
-                        <span className="text-border-mute">|</span>
-                        <span>{activeConnection.brokers.join(', ')}</span>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <UpdateSettings compact />
-                    <span>v{appVersion || '...'}</span>
-                  </div>
-                </div>
               </main>
             </div>
           ) : (
@@ -173,6 +148,23 @@ export function MainLayout() {
               <EmptyState message="Select a connection from the sidebar to get started" />
             </div>
           )}
+
+          {/* Status Bar — always visible */}
+          <div className="flex h-8 items-center justify-between border-t border-border-mute bg-bg-sidebar px-4 text-xs text-text-secondary font-mono shrink-0">
+            <div className="flex items-center gap-3">
+              {activeConnection && isConnected && (
+                <>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent-active" />
+                    <span className="text-accent-active">Connected</span>
+                  </span>
+                  <span className="text-border-mute">|</span>
+                  <span>{activeConnection.brokers.join(', ')}</span>
+                </>
+              )}
+            </div>
+            <UpdateChecker />
+          </div>
         </div>
       </div>
 

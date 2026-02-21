@@ -17,7 +17,6 @@ export type {
   BrokerInfo,
   ClusterInfo,
   ConnectionStatus,
-  UpdateChannel,
   UpdateCheckResult,
   DownloadProgress,
   IpcSuccessResponse,

@@ -14,7 +14,7 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  prepare-release:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -31,47 +31,26 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          # Get the previous tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
 
-          if [ -z "$PREVIOUS_TAG" ]; then
-            # No previous tag, get all commits
-            COMMITS=$(git log --oneline --pretty=format:"- %s (%h)" | head -50)
-          else
-            # Get commits since previous tag
-            COMMITS=$(git log --oneline --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..HEAD)
-          fi
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
 
-          # Create release notes
-          cat << EOF > release_notes.md
-          ## What's Changed
+      - name: Compile application
+        run: npx tsc && npx vite build
 
-          $COMMITS
-
-          ## Installation
-
-          ### macOS
-          #### Apple Silicon (M1/M2/M3)
-          - **DMG**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-arm64.dmg\`
-          - **ZIP**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-arm64-mac.zip\`
-
-          #### Intel
-          - **DMG**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.dmg\`
-          - **ZIP**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}-mac.zip\`
-
-          ### Windows
-          - **Installer**: Download \`Topiq Explorer-Setup-${{ steps.version.outputs.version }}.exe\`
-          - **Portable**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.exe\`
-
-          ### Linux
-          - **AppImage**: Download \`Topiq Explorer-${{ steps.version.outputs.version }}.AppImage\`
-          - **Debian**: Download \`topiq-explorer_${{ steps.version.outputs.version }}_amd64.deb\`
-          EOF
-
-          cat release_notes.md
+      - name: Upload compiled app
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-app
+          path: |
+            dist/
+            dist-electron/
+          if-no-files-found: error
 
       - name: Verify release exists
         id: create_release
@@ -86,7 +65,7 @@ jobs:
               --draft
 
   build:
-    needs: prepare-release
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -105,6 +84,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download compiled app
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-app
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -114,20 +98,10 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build application
-        run: npx tsc && npx vite build && npx electron-builder ${{ matrix.build_args }} --publish never
+      - name: Package with electron-builder
+        run: npx electron-builder ${{ matrix.build_args }} --publish never
         env:
-          # Disable code signing for now (builds will be unsigned)
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          # macOS code signing (uncomment and set secrets when ready)
-          # CSC_LINK: ${{ secrets.CSC_LINK }}
-          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          # Windows code signing (uncomment and set secrets when ready)
-          # WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: List build artifacts
         shell: bash
@@ -154,6 +128,7 @@ jobs:
           name: windows-artifacts
           path: |
             release/*.exe
+            release/latest.yml
           if-no-files-found: error
 
       - name: Upload Linux artifacts
@@ -168,30 +143,16 @@ jobs:
           if-no-files-found: error
 
   upload-release:
-    needs: [prepare-release, build]
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     if: always() && needs.build.result == 'success'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download macOS artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: macos-artifacts
-          path: artifacts/mac
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-artifacts
-          path: artifacts/win
-
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-artifacts
-          path: artifacts/linux
+          pattern: "*-artifacts"
+          merge-multiple: true
+          path: artifacts
 
       - name: List all artifacts
         run: |
@@ -204,11 +165,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Upload all artifacts to the release
-          for file in artifacts/mac/* artifacts/win/* artifacts/linux/*; do
-            if [ -f "$file" ]; then
-              echo "Uploading: $file"
-              gh release upload ${{ github.ref_name }} "$file" --clobber
-            fi
+          find artifacts -type f | while read file; do
+            echo "Uploading: $file"
+            gh release upload ${{ github.ref_name }} "$file" --clobber
           done
         shell: bash
 
@@ -218,11 +177,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Upload all artifacts to the existing release
-          for file in artifacts/mac/* artifacts/win/* artifacts/linux/*; do
-            if [ -f "$file" ]; then
-              echo "Uploading: $file"
-              gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
-            fi
+          find artifacts -type f | while read file; do
+            echo "Uploading: $file"
+            gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
           done
         shell: bash
 
@@ -234,16 +191,14 @@ jobs:
           gh release edit ${{ github.ref_name }} --draft=false
 
   cleanup-on-failure:
-    needs: [prepare-release, build]
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     if: always() && needs.build.result == 'failure' && github.event_name == 'push'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Delete draft release on failure
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           echo "Build failed, cleaning up draft release..."
           gh release delete ${{ github.ref_name }} --yes || echo "Release not found or already deleted"

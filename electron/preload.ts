@@ -5,7 +5,6 @@ import type {
   MessageOptions,
   ProduceMessage,
   ResetOffsetOptions,
-  UpdateChannel,
   UpdateCheckResult,
   DownloadProgress
 } from '../shared/types'
@@ -17,7 +16,6 @@ export type {
   MessageOptions,
   ProduceMessage,
   ResetOffsetOptions,
-  UpdateChannel,
   UpdateCheckResult,
   DownloadProgress
 }
@@ -75,8 +73,6 @@ const api = {
     downloadUpdate: (): Promise<{ success: boolean }> => ipcRenderer.invoke('updater:downloadUpdate'),
     installUpdate: (): Promise<void> => ipcRenderer.invoke('updater:installUpdate'),
     getVersion: (): Promise<string> => ipcRenderer.invoke('updater:getVersion'),
-    getChannel: (): Promise<UpdateChannel> => ipcRenderer.invoke('updater:getChannel'),
-    setChannel: (channel: UpdateChannel): Promise<UpdateChannel> => ipcRenderer.invoke('updater:setChannel', channel),
 
     // Event listeners
     onCheckingForUpdate: (callback: () => void) => {

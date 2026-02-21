@@ -131,8 +131,6 @@ export interface ClusterInfo {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-export type UpdateChannel = 'stable' | 'beta' | 'alpha'
-
 export interface UpdateCheckResult {
   updateAvailable: boolean
   version: string

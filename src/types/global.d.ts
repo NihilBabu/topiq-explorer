@@ -54,8 +54,6 @@ interface ResetOffsetOptions {
   partitions?: number[]
 }
 
-type UpdateChannel = 'stable' | 'beta' | 'alpha'
-
 interface UpdateCheckResult {
   updateAvailable: boolean
   version: string
@@ -75,8 +73,6 @@ interface UpdaterApi {
   downloadUpdate: () => Promise<{ success: boolean }>
   installUpdate: () => Promise<void>
   getVersion: () => Promise<string>
-  getChannel: () => Promise<UpdateChannel>
-  setChannel: (channel: UpdateChannel) => Promise<UpdateChannel>
   onCheckingForUpdate: (callback: () => void) => () => void
   onUpdateAvailable: (callback: (info: UpdateCheckResult) => void) => () => void
   onUpdateNotAvailable: (callback: () => void) => () => void

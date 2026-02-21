@@ -2,57 +2,14 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { autoUpdater } from 'electron-updater'
-import Store from 'electron-store'
 import { KafkaService } from './services/kafka.service'
 import { ConnectionStore } from './services/connection.store'
-
-// Configure electron-store for updater settings
-const settingsStore = new Store<{ updateChannel: 'stable' | 'beta' | 'alpha' }>({
-  defaults: {
-    updateChannel: 'stable'
-  }
-})
 
 // Configure autoUpdater
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
-
-function configureUpdaterChannel() {
-  const channel = settingsStore.get('updateChannel', 'stable')
-
-  switch (channel) {
-    case 'alpha':
-      autoUpdater.allowPrerelease = true
-      autoUpdater.allowDowngrade = false
-      break
-    case 'beta':
-      autoUpdater.allowPrerelease = true
-      autoUpdater.allowDowngrade = false
-      break
-    case 'stable':
-    default:
-      autoUpdater.allowPrerelease = false
-      autoUpdater.allowDowngrade = false
-      break
-  }
-}
-
-// Check if version matches the current channel filter
-function isVersionAllowedForChannel(version: string, channel: 'stable' | 'beta' | 'alpha'): boolean {
-  const isAlpha = version.includes('-alpha')
-  const isBeta = version.includes('-beta')
-  const isPrerelease = isAlpha || isBeta
-
-  switch (channel) {
-    case 'alpha':
-      return true // Accept all versions
-    case 'beta':
-      return !isAlpha // Accept stable and beta, not alpha
-    case 'stable':
-    default:
-      return !isPrerelease // Accept only stable versions
-  }
-}
+autoUpdater.allowPrerelease = false
+autoUpdater.allowDowngrade = false
 
 let mainWindow: BrowserWindow | null = null
 const kafkaService = new KafkaService()
@@ -96,11 +53,8 @@ app.whenReady().then(() => {
     }
   })
 
-  // Configure and check for updates (skip in dev mode)
+  // Auto-check for updates 3 seconds after app ready (skip in dev mode)
   if (!process.env.VITE_DEV_SERVER_URL) {
-    configureUpdaterChannel()
-
-    // Auto-check for updates 3 seconds after app ready
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(() => {
         // Silently ignore update check errors on startup
@@ -115,11 +69,7 @@ autoUpdater.on('checking-for-update', () => {
 })
 
 autoUpdater.on('update-available', (info) => {
-  const channel = settingsStore.get('updateChannel', 'stable')
-  // Filter out updates that don't match the channel
-  if (isVersionAllowedForChannel(info.version, channel)) {
-    mainWindow?.webContents.send('updater:update-available', info)
-  }
+  mainWindow?.webContents.send('updater:update-available', info)
 })
 
 autoUpdater.on('update-not-available', (info) => {
@@ -375,13 +325,10 @@ ipcMain.handle('updater:checkForUpdates', async () => {
     return { updateAvailable: false, version: app.getVersion() }
   }
   try {
-    configureUpdaterChannel()
     const result = await autoUpdater.checkForUpdates()
     if (result && result.updateInfo) {
-      const channel = settingsStore.get('updateChannel', 'stable')
-      const isAllowed = isVersionAllowedForChannel(result.updateInfo.version, channel)
       return {
-        updateAvailable: isAllowed,
+        updateAvailable: true,
         version: result.updateInfo.version,
         releaseNotes: result.updateInfo.releaseNotes,
         releaseDate: result.updateInfo.releaseDate
@@ -411,14 +358,4 @@ ipcMain.handle('updater:installUpdate', () => {
 
 ipcMain.handle('updater:getVersion', () => {
   return app.getVersion()
-})
-
-ipcMain.handle('updater:getChannel', () => {
-  return settingsStore.get('updateChannel', 'stable')
-})
-
-ipcMain.handle('updater:setChannel', (_, channel: 'stable' | 'beta' | 'alpha') => {
-  settingsStore.set('updateChannel', channel)
-  configureUpdaterChannel()
-  return channel
 })
