@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  release:
-    types: [created]
 
 permissions:
   contents: write
@@ -52,9 +50,7 @@ jobs:
             dist-electron/
           if-no-files-found: error
 
-      - name: Verify release exists
-        id: create_release
-        if: github.event_name == 'push'
+      - name: Ensure draft release exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -98,10 +94,11 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Package with electron-builder
-        run: npx electron-builder ${{ matrix.build_args }} --publish never
+      - name: Build and publish with electron-builder
+        run: npx electron-builder ${{ matrix.build_args }} --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List build artifacts
         shell: bash
@@ -109,84 +106,12 @@ jobs:
           echo "Build artifacts:"
           ls -la release/ || echo "No release directory"
 
-      - name: Upload macOS artifacts
-        if: matrix.platform == 'mac'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-artifacts
-          path: |
-            release/*.dmg
-            release/*.zip
-            release/*.blockmap
-            release/latest-mac.yml
-          if-no-files-found: error
-
-      - name: Upload Windows artifacts
-        if: matrix.platform == 'win'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-artifacts
-          path: |
-            release/*.exe
-            release/latest.yml
-          if-no-files-found: error
-
-      - name: Upload Linux artifacts
-        if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-artifacts
-          path: |
-            release/*.AppImage
-            release/*.deb
-            release/latest-linux.yml
-          if-no-files-found: error
-
-  upload-release:
+  finalize:
     needs: [prepare, build]
     runs-on: ubuntu-latest
-    if: always() && needs.build.result == 'success'
+    if: needs.build.result == 'success'
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "*-artifacts"
-          merge-multiple: true
-          path: artifacts
-
-      - name: List all artifacts
-        run: |
-          echo "All downloaded artifacts:"
-          find artifacts -type f -ls
-
-      - name: Upload to GitHub Release (tag-triggered)
-        if: github.event_name == 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          # Upload all artifacts to the release
-          find artifacts -type f | while read file; do
-            echo "Uploading: $file"
-            gh release upload ${{ github.ref_name }} "$file" --clobber
-          done
-        shell: bash
-
-      - name: Upload to GitHub Release (release-triggered)
-        if: github.event_name == 'release'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          # Upload all artifacts to the existing release
-          find artifacts -type f | while read file; do
-            echo "Uploading: $file"
-            gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
-          done
-        shell: bash
-
       - name: Publish release (remove draft status)
-        if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -196,7 +121,7 @@ jobs:
   cleanup-on-failure:
     needs: [prepare, build]
     runs-on: ubuntu-latest
-    if: always() && needs.build.result == 'failure' && github.event_name == 'push'
+    if: always() && needs.build.result == 'failure'
     steps:
       - name: Delete draft release on failure
         env:

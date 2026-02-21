@@ -86,6 +86,7 @@
       "dist-electron/**/*"
     ],
     "mac": {
+      "artifactName": "${name}-${version}-${arch}-mac.${ext}",
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.png",
       "target": [
@@ -106,13 +107,18 @@
       ]
     },
     "win": {
+      "artifactName": "${name}-${version}.${ext}",
       "icon": "build/icon.png",
       "target": [
         "nsis",
         "portable"
       ]
     },
+    "nsis": {
+      "artifactName": "${name}-setup-${version}.${ext}"
+    },
     "linux": {
+      "artifactName": "${name}-${version}.${ext}",
       "icon": "build/icon.png",
       "target": [
         "AppImage",
