@@ -11,8 +11,8 @@ concurrency:
 
 jobs:
   auto-release:
-    # Skip version-bump commits to prevent infinite loops
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    # Skip bot commits (version bumps) to prevent infinite loops
+    if: github.event.head_commit.committer.email != 'github-actions[bot]@users.noreply.github.com'
     runs-on: ubuntu-latest
 
     steps:
