@@ -40,6 +40,16 @@ interface MessageOptions {
   limit?: number
 }
 
+interface SearchMessageOptions {
+  query: string
+  partition?: number
+  fromOffset?: string
+  fromPartition?: number
+  maxScan?: number
+  maxMatches?: number
+  requestId?: string
+}
+
 interface ProduceMessage {
   key?: string
   value: string | null
@@ -107,6 +117,8 @@ interface WindowApi {
     deleteConsumerGroup: (connectionId: string, groupId: string) => Promise<void>
     resetOffsets: (connectionId: string, groupId: string, topic: string, options: ResetOffsetOptions) => Promise<void>
     deleteRecords: (connectionId: string, topic: string, partitionOffsets: { partition: number; offset: string }[]) => Promise<void>
+    searchMessages: (connectionId: string, topic: string, options: SearchMessageOptions) => Promise<any>
+    cancelSearch: (connectionId: string, requestId: string) => Promise<void>
   }
   updater: UpdaterApi
 }

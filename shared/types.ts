@@ -76,6 +76,33 @@ export interface MessageOptions {
   limit?: number
 }
 
+export interface MessageFetchResult {
+  messages: KafkaMessage[]
+  hasMore: boolean
+  nextOffset: string | null
+  nextPartition?: number
+}
+
+export interface SearchMessageOptions {
+  query: string
+  partition?: number
+  fromOffset?: string
+  fromPartition?: number
+  maxScan?: number
+  maxMatches?: number
+  requestId?: string
+}
+
+export interface SearchMessageResult {
+  matches: KafkaMessage[]
+  scanned: number
+  totalMatches: number
+  hasMore: boolean
+  nextOffset: string | null
+  nextPartition?: number
+  cancelled: boolean
+}
+
 export interface ProduceMessage {
   key?: string
   value: string | null

@@ -5,6 +5,7 @@ import type {
   MessageOptions,
   ProduceMessage,
   ResetOffsetOptions,
+  SearchMessageOptions,
   UpdateCheckResult,
   DownloadProgress
 } from '../shared/types'
@@ -54,6 +55,10 @@ const api = {
       ipcRenderer.invoke('kafka:getMessages', connectionId, topic, options),
     produceMessage: (connectionId: string, topic: string, message: ProduceMessage) =>
       ipcRenderer.invoke('kafka:produceMessage', connectionId, topic, message),
+    searchMessages: (connectionId: string, topic: string, options: SearchMessageOptions) =>
+      ipcRenderer.invoke('kafka:searchMessages', connectionId, topic, options),
+    cancelSearch: (connectionId: string, requestId: string) =>
+      ipcRenderer.invoke('kafka:cancelSearch', connectionId, requestId),
 
     // Consumer Groups
     getConsumerGroups: (connectionId: string) => ipcRenderer.invoke('kafka:getConsumerGroups', connectionId),

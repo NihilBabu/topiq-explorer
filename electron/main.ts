@@ -267,6 +267,23 @@ ipcMain.handle('kafka:getMessages', async (_, connectionId: string, topic: strin
   }
 })
 
+ipcMain.handle('kafka:searchMessages', async (_, connectionId: string, topic: string, options) => {
+  try {
+    return ipcSuccess(await kafkaService.searchMessages(connectionId, topic, options))
+  } catch (error) {
+    return ipcError(error)
+  }
+})
+
+ipcMain.handle('kafka:cancelSearch', async (_, connectionId: string, requestId: string) => {
+  try {
+    kafkaService.cancelSearch(requestId)
+    return ipcSuccess(undefined)
+  } catch (error) {
+    return ipcError(error)
+  }
+})
+
 ipcMain.handle('kafka:produceMessage', async (_, connectionId: string, topic: string, message) => {
   try {
     await kafkaService.produceMessage(connectionId, topic, message)

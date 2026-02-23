@@ -85,6 +85,7 @@ export function MessageFilters({ filters, onFilterChange }: MessageFiltersProps)
                 <SelectItem value="100">100 messages</SelectItem>
                 <SelectItem value="200">200 messages</SelectItem>
                 <SelectItem value="500">500 messages</SelectItem>
+                <SelectItem value="1000">1000 messages</SelectItem>
               </SelectContent>
             </Select>
           </div>
