@@ -30,11 +30,19 @@ import {
 import type { KafkaMessage, MessageOptions } from '@/types/kafka.types'
 
 interface ParsedMessage extends KafkaMessage {
-  parsedValue: unknown
-  isJson: boolean
+  _parsed?: { value: unknown; isJson: boolean }
   messageId: string
   stringifiedPreview: string
   _searchText: string
+}
+
+/** Lazily parse JSON — result is cached on the message object */
+function getParsed(message: ParsedMessage): { value: unknown; isJson: boolean } {
+  if (!message._parsed) {
+    const { parsed, isJson } = tryParseJson(message.value || '')
+    message._parsed = { value: parsed, isJson }
+  }
+  return message._parsed
 }
 
 interface MessageRowProps {
@@ -98,13 +106,15 @@ const MessageRow = memo(function MessageRow({ message, isExpanded, searchQuery, 
         </Button>
       </div>
 
-      {isExpanded && (
+      {isExpanded && (() => {
+        const { isJson } = getParsed(message)
+        return (
         <div className="border-t border-border bg-muted/30 p-4">
           <div className="space-y-4">
             <div>
               <h4 className="text-xs font-medium text-muted-foreground mb-1">Value</h4>
               <pre className="json-viewer overflow-auto rounded-md bg-background p-3 text-sm">
-                <HighlightText text={message.isJson ? formatJson(message.value || '') : message.value || '(empty)'} query={searchQuery} />
+                <HighlightText text={isJson ? formatJson(message.value || '') : message.value || '(empty)'} query={searchQuery} />
               </pre>
             </div>
 
@@ -179,7 +189,8 @@ const MessageRow = memo(function MessageRow({ message, isExpanded, searchQuery, 
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 })
@@ -255,20 +266,17 @@ export function MessageViewer() {
   // Derive active search query for highlighting (covers both client-side and server-side search)
   const activeSearchQuery = searchQuery.trim()
 
-  // Memoize parsed messages to avoid re-parsing JSON on every render
+  // Build lightweight message wrappers — defer JSON parsing to expansion time
   const parsedMessages = useMemo<ParsedMessage[]>(() => {
     return messages.map((message) => {
-      const { parsed, isJson } = tryParseJson(message.value || '')
-      const stringified = isJson ? JSON.stringify(parsed) : (message.value || '')
-      const preview = stringified.substring(0, 100) + (stringified.length > 100 ? '...' : '')
+      const raw = message.value || ''
+      const preview = raw.substring(0, 100) + (raw.length > 100 ? '...' : '')
       const headerEntries = Object.entries(message.headers ?? {}).flatMap(([k, v]) => [k, String(v)])
       return {
         ...message,
-        parsedValue: parsed,
-        isJson,
         messageId: `${message.partition}-${message.offset}`,
         stringifiedPreview: preview,
-        _searchText: [preview, message.value || '', message.key || '', ...headerEntries].join('\0').toLowerCase()
+        _searchText: [raw, message.key || '', ...headerEntries].join('\0').toLowerCase()
       }
     })
   }, [messages])
@@ -279,16 +287,13 @@ export function MessageViewer() {
     return parsedMessages.filter((message) => message._searchText.includes(query))
   }, [parsedMessages, debouncedSearchQuery])
 
-  // Parse search results the same way as regular messages
+  // Build lightweight search result wrappers — defer JSON parsing to expansion
   const parsedSearchResults = useMemo<ParsedMessage[]>(() => {
     return searchResults.map((message) => {
-      const { parsed, isJson } = tryParseJson(message.value || '')
-      const stringified = isJson ? JSON.stringify(parsed) : (message.value || '')
-      const preview = stringified.substring(0, 100) + (stringified.length > 100 ? '...' : '')
+      const raw = message.value || ''
+      const preview = raw.substring(0, 100) + (raw.length > 100 ? '...' : '')
       return {
         ...message,
-        parsedValue: parsed,
-        isJson,
         messageId: `${message.partition}-${message.offset}`,
         stringifiedPreview: preview,
         _searchText: '' // Not used for server-side search results
@@ -416,13 +421,14 @@ export function MessageViewer() {
   }, [])
 
   const copyToClipboard = useCallback(async (message: ParsedMessage) => {
+    const { value: parsedValue } = getParsed(message)
     const content = JSON.stringify(
       {
         partition: message.partition,
         offset: message.offset,
         timestamp: message.timestamp,
         key: message.key,
-        value: message.parsedValue,
+        value: parsedValue,
         headers: message.headers
       },
       null,

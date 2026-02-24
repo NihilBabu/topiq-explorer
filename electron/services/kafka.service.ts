@@ -12,6 +12,16 @@ import type {
   SearchMessageResult
 } from '../../shared/types'
 
+// Large message protection: truncate oversized payloads before sending to renderer
+const MAX_VALUE_SIZE = 1_048_576  // 1MB
+const MAX_KEY_SIZE = 10_240       // 10KB
+const MAX_HEADER_VALUE_SIZE = 10_240  // 10KB
+
+const truncate = (s: string | null | undefined, max: number): string | null => {
+  if (s == null) return null
+  return s.length > max ? s.slice(0, max) + '\n...[truncated]' : s
+}
+
 interface KafkaInstance {
   kafka: Kafka
   admin: Admin
@@ -152,15 +162,17 @@ export class KafkaService {
 
     const errors: Error[] = []
 
-    // Disconnect all consumers
-    for (const consumer of instance.consumers.values()) {
+    // Copy consumers before clearing to prevent race with concurrent additions
+    const consumersToDisconnect = new Map(instance.consumers)
+    instance.consumers.clear()
+
+    for (const consumer of consumersToDisconnect.values()) {
       try {
         await consumer.disconnect()
       } catch (error) {
         errors.push(error instanceof Error ? error : new Error(String(error)))
       }
     }
-    instance.consumers.clear()
 
     // Clean up any tracked temporary consumer groups before disconnecting admin
     try {
@@ -396,12 +408,12 @@ export class KafkaService {
     const cleanup = async () => {
       if (cleanedUp) return
       cleanedUp = true
-      await consumer.disconnect()
+      try {
+        await consumer.disconnect()
+      } catch { /* swallow */ }
       try {
         await admin.deleteGroups([groupId])
-      } catch {
-        // Group may already be deleted or not exist, ignore
-      }
+      } catch { /* group may already be deleted */ }
       this.untrackTempGroup(connectionId, groupId)
     }
 
@@ -465,7 +477,7 @@ export class KafkaService {
               const headers: Record<string, string> = {}
               if (message.headers) {
                 for (const [key, value] of Object.entries(message.headers)) {
-                  headers[key] = value?.toString() || ''
+                  headers[key] = truncate(value?.toString() || '', MAX_HEADER_VALUE_SIZE) || ''
                 }
               }
 
@@ -473,8 +485,8 @@ export class KafkaService {
                 partition: msgPartition,
                 offset: message.offset,
                 timestamp: message.timestamp,
-                key: message.key?.toString() || null,
-                value: message.value?.toString() || null,
+                key: truncate(message.key?.toString() || null, MAX_KEY_SIZE),
+                value: truncate(message.value?.toString() || null, MAX_VALUE_SIZE),
                 headers
               })
 
@@ -583,12 +595,12 @@ export class KafkaService {
       if (cleanedUp) return
       cleanedUp = true
       this.activeSearches.delete(requestId)
-      await consumer.disconnect()
+      try {
+        await consumer.disconnect()
+      } catch { /* swallow */ }
       try {
         await admin.deleteGroups([groupId])
-      } catch {
-        // Group may already be deleted
-      }
+      } catch { /* group may already be deleted */ }
       this.untrackTempGroup(connectionId, groupId)
     }
 
@@ -682,13 +694,18 @@ export class KafkaService {
               }
 
               if (matched) {
+                // Truncate headers for the result sent to renderer
+                const truncatedHeaders: Record<string, string> = {}
+                for (const [hk, hv] of Object.entries(headers)) {
+                  truncatedHeaders[hk] = truncate(hv, MAX_HEADER_VALUE_SIZE) || ''
+                }
                 matches.push({
                   partition: msgPartition,
                   offset: message.offset,
                   timestamp: message.timestamp,
-                  key: key || null,
-                  value: value || null,
-                  headers
+                  key: truncate(key || null, MAX_KEY_SIZE),
+                  value: truncate(value || null, MAX_VALUE_SIZE),
+                  headers: truncatedHeaders
                 })
               }
 

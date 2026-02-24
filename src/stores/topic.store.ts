@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useConnectionStore } from './connection.store'
 import type { TopicMetadata, ConfigEntry, KafkaMessage, TopicConfig, MessageOptions, ProduceMessage, SearchMessageOptions } from '../types/kafka.types'
 
 interface MessageToRepublish {
@@ -13,6 +14,8 @@ let messageRequestId = 0
 let searchRequestCounter = 0
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<void>>()
+// Maximum number of search results to keep in memory
+const MAX_SEARCH_RESULTS = 10_000
 
 interface TopicState {
   topics: string[]
@@ -437,10 +440,15 @@ export const useTopicStore = create<TopicState>((set) => ({
           throw new Error(typedResult.error || 'Search failed')
         }
         const data = typedResult.data!
+        let combined = [...state.searchResults, ...data.matches]
+        // Cap search results to prevent unbounded memory growth
+        if (combined.length > MAX_SEARCH_RESULTS) {
+          combined = combined.slice(combined.length - MAX_SEARCH_RESULTS)
+        }
         set({
-          searchResults: [...state.searchResults, ...data.matches],
+          searchResults: combined,
           searchScanned: state.searchScanned + data.scanned,
-          searchTotalMatches: state.searchResults.length + data.matches.length,
+          searchTotalMatches: combined.length,
           searchHasMore: data.hasMore,
           searchNextOffset: data.nextOffset,
           searchNextPartition: data.nextPartition,
@@ -525,3 +533,12 @@ export const useTopicStore = create<TopicState>((set) => ({
     })
   }
 }))
+
+// Reset topic store when active connection changes to prevent stale data from previous cluster
+let _prevConnectionId: string | null = useConnectionStore.getState().activeConnectionId
+useConnectionStore.subscribe((state) => {
+  if (state.activeConnectionId !== _prevConnectionId) {
+    _prevConnectionId = state.activeConnectionId
+    useTopicStore.getState().reset()
+  }
+})
